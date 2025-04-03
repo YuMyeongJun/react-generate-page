@@ -18,28 +18,16 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
-      - uses: actions/checkout@v3
-        with:
-          ref: ${{ github.ref }}
-
       - uses: actions/setup-node@v3
         with:
           node-version: '18'
           registry-url: 'https://registry.npmjs.org'
-
-      - name: Update package version
-        run: npm version ${{ steps.version.outputs.version }} --no-git-tag-version
 
       - name: Commit updated package version
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
           commit_message: 'chore: Update package version'
           branch: main
-
-      - name: Update Git tag
-        run: |
-          git tag ${{ github.ref_name }} -f
-          git push origin ${{ github.ref_name }} -f
 
       - name: Yarn install
         run: |
