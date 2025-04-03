@@ -6,9 +6,7 @@
   "license": "MIT",
   "type": "module",
   "main": "dist/generate-page.js",
-  "bin": {
-    "react-generate-page": "./dist/generate-page.js"
-  },
+  "bin": "./dist/generate-page.js",
   "files": [
     "dist",
     "README.md"
