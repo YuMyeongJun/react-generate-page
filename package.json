@@ -14,15 +14,13 @@
     "build": "tsc",
     "prepublishOnly": "npm run build"
   },
-  "dependencies": {
-    "ts-node": "^10.9.2"
-  },
   "author": "MyeongJun Yu <y1207cc@gmail.com>",
   "license": "MIT",
-  "packageManager": "yarn@4.8.1",
+  "packageManager": "yarn@1.22.19",
   "devDependencies": {
     "@types/node": "^22.14.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "ts-node": "^10.9.2"
   },
   "bin": {
     "@mj_yu/react-generate-page": "./dist/generate-page.js"
