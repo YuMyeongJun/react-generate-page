@@ -2,17 +2,6 @@ import * as fs from "fs";
 import * as path from "path";
 import * as readline from "readline";
 
-function toCamelCase(str: string): string {
-  return str
-    .split(/[-_\s]+/)
-    .map((word, index) =>
-      index === 0
-        ? word.toLowerCase()
-        : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-    )
-    .join("");
-}
-
 function toPascalCase(str: string): string {
   return str
     .split(/[-_\s]+/)
@@ -90,11 +79,6 @@ function generatePageIndex(options: GeneratePageOptions): string {
 `;
 }
 
-function generateModelIndex(options: GeneratePageOptions): string {
-  return `// Add model exports here
-`;
-}
-
 function generateParentIndex(childPath: string): string {
   const childName = path.basename(childPath);
   return `export * from './${childName}';\n`;
@@ -158,23 +142,27 @@ async function generatePageFiles(options: GeneratePageOptions) {
   );
 
   const createInterface = await askQuestion(
-    `모델 인터페이스 디렉토리를 생성하시겠습니까? (models/interfaces/${pagePath}/${pageName}) (y/N): `
+    `모델 인터페이스 디렉토리를 생성하시겠습니까? (models/interfaces/${pagePath}) (y/N): `
   );
 
   const createType = await askQuestion(
-    `모델 타입 디렉토리를 생성하시겠습니까? (models/types/${pagePath}/${pageName}) (y/N): `
+    `모델 타입 디렉토리를 생성하시겠습니까? (models/types/${pagePath}) (y/N): `
   );
 
   const createHooks = await askQuestion(
-    `훅스 디렉토리를 생성하시겠습니까? (hooks/client/${pagePath}/${pageName}) (y/N): `
+    `훅스 디렉토리를 생성하시겠습니까? (hooks/client/${pagePath}) (y/N): `
   );
 
-  const fullPath = pagePath ? `${pagePath}/${pageName}` : pageName;
-  const componentDir = path.join("src/components/pages", fullPath);
-  const pagesDir = path.join("src/pages", fullPath);
-  const interfaceDir = path.join("src/models/interfaces", fullPath);
-  const typeDir = path.join("src/models/types", fullPath);
-  const hooksDir = path.join("src/hooks/client", fullPath);
+  const componentDir = path.join("src/components/pages", pagePath);
+  const pagesDir = path.join("src/pages", pagePath);
+  const interfaceDir = path.join("src/models/interfaces", pagePath);
+  const typeDir = path.join("src/models/types", pagePath);
+  const hooksDir = path.join("src/hooks/client", pagePath);
+
+  const pageOptions: GeneratePageOptions = {
+    pagePath,
+    pageName: toPascalCase(pageName),
+  };
 
   // 기본 디렉토리 생성
   ensureDirectoryExists(componentDir);
@@ -198,46 +186,49 @@ async function generatePageFiles(options: GeneratePageOptions) {
 
   // components 디렉토리 파일 생성
   fs.writeFileSync(
-    path.join(componentDir, `${options.pageName}Component.tsx`),
-    generateComponent(options)
+    path.join(componentDir, `${pageOptions.pageName}Component.tsx`),
+    generateComponent(pageOptions)
   );
   fs.writeFileSync(
-    path.join(componentDir, `${options.pageName}ViewModel.tsx`),
-    generateViewModel(options)
+    path.join(componentDir, `${pageOptions.pageName}ViewModel.tsx`),
+    generateViewModel(pageOptions)
   );
   fs.writeFileSync(
     path.join(componentDir, "index.ts"),
-    generateComponentIndex(options)
+    generateComponentIndex(pageOptions)
   );
 
   // pages 디렉토리 파일 생성
   fs.writeFileSync(
-    path.join(pagesDir, `${options.pageName}Page.tsx`),
-    generatePage(options)
+    path.join(pagesDir, `${pageOptions.pageName}Page.tsx`),
+    generatePage(pageOptions)
   );
-  fs.writeFileSync(path.join(pagesDir, "index.ts"), generatePageIndex(options));
+  fs.writeFileSync(
+    path.join(pagesDir, "index.ts"),
+    generatePageIndex(pageOptions)
+  );
 
   // 상위 디렉토리의 index.ts 파일들 생성
-  ensureParentIndexFiles("src/components/pages", options.pagePath);
-  ensureParentIndexFiles("src/pages", options.pagePath);
+  ensureParentIndexFiles("src/components/pages", pagePath);
+  ensureParentIndexFiles("src/pages", pagePath);
 
   if (createInterface.toLowerCase() === "y") {
-    ensureParentIndexFiles("src/models/interfaces", options.pagePath);
+    ensureParentIndexFiles("src/models/interfaces", pagePath);
   }
   if (createType.toLowerCase() === "y") {
-    ensureParentIndexFiles("src/models/types", options.pagePath);
+    ensureParentIndexFiles("src/models/types", pagePath);
   }
   if (createHooks.toLowerCase() === "y") {
-    ensureParentIndexFiles("src/hooks/client", options.pagePath);
+    ensureParentIndexFiles("src/hooks/client", pagePath);
   }
 
   console.log(`✨ 페이지가 성공적으로 생성되었습니다!
 
 생성된 파일:
-- ${path.join(componentDir, `${options.pageName}Component.tsx`)}
-- ${path.join(componentDir, `${options.pageName}ViewModel.tsx`)}
+- ${path.join(componentDir, `${pageOptions.pageName}Component.tsx`)}
+- ${path.join(componentDir, `${pageOptions.pageName}ViewModel.tsx`)}
 - ${path.join(componentDir, "index.ts")}
-- ${path.join(pagesDir, `${options.pageName}Page.tsx`)}
+- ${path.join(pagesDir, `${pageOptions.pageName}Page.tsx`)}
 - ${path.join(pagesDir, "index.ts")}${
     createInterface.toLowerCase() === "y"
       ? `\n- ${path.join(interfaceDir, "index.ts")}`
@@ -267,7 +258,7 @@ if (process.argv.length < 2) {
   const pageName = process.argv[3] || "";
 
   generatePageFiles({
-    pagePath: pagePath ? toCamelCase(pagePath) : "",
-    pageName: pageName ? toPascalCase(pageName) : "",
+    pagePath,
+    pageName,
   }).catch(console.error);
 }
