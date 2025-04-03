@@ -18,6 +18,10 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.ref }}
+
       - uses: actions/setup-node@v3
         with:
           node-version: '18'
@@ -32,7 +36,7 @@ jobs:
       - name: Yarn install
         run: |
           yarn set version 4.8.1
-          yarn
+          yarn install --immutable
 
       - name: Build
         run: yarn build
