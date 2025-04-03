@@ -121,3 +121,91 @@ export const TestPagePage = () => {
 ```
 
 생성되는 모든 컴포넌트는 이 path alias를 사용하여 import 구문이 자동으로 생성됩니다.
+
+## 🤖 자동 PR 리뷰 설정 (Graphite Diamond)
+
+Graphite Diamond를 사용하여 자동 PR 리뷰를 설정할 수 있습니다.
+
+### 1. 필수 설정
+
+#### 리포지토리 기본 설정
+
+Settings → General에서 다음 설정을 적용:
+
+```
+✓ Pull Requests 섹션:
+  - [ ] Allow merge commits (비활성화)
+  - [x] Allow squash merging (활성화)
+  - [x] Allow rebase merging (활성화)
+  - [x] Automatically delete head branches (활성화)
+
+✓ Push Protection 섹션:
+  - [ ] Limit how many branches... (비활성화)
+```
+
+#### 브랜치 보호 규칙
+
+Settings → Branches → Add rule에서 다음 설정을 적용:
+
+```
+Branch name pattern: main
+
+✓ 보호 규칙:
+  - [x] Require a pull request before merging
+      └─ Required number of approvals: 1
+      └─ [ ] Dismiss stale pull request approvals (비활성화)
+  - [x] Require status checks to pass
+  - [x] Require conversation resolution
+  - [x] Require linear history
+  - [ ] Include administrators (비활성화)
+```
+
+### 2. Graphite Diamond 설치
+
+1. [Graphite Diamond App](https://github.com/apps/graphite-code-review)을 GitHub 리포지토리에 설치
+2. PR 생성 시 자동으로 코드 리뷰 수행
+3. 코드 스타일, 패턴 및 모범 사례 검사
+
+자동 리뷰는 다음 규칙들을 검사합니다:
+- 컴포넌트 Props 인터페이스 명명 규칙
+- ViewModel 인터페이스 및 Context 패턴
+- 올바른 import path 사용
+- 파일 및 컴포넌트 명명 규칙
+
+### 3. CI 워크플로우 (선택사항)
+
+추가적인 코드 품질 검사를 원하는 경우, 다음과 같은 CI 워크플로우를 설정할 수 있습니다:
+
+`.github/workflows/ci.yml`:
+```yaml
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'yarn'
+          
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+        
+      - name: Type check
+        run: yarn tsc --noEmit
+        
+      - name: Lint
+        run: yarn eslint .
+```
+
+이 워크플로우는 TypeScript 타입 체크와 ESLint 검사를 수행합니다.
