@@ -1,53 +1,30 @@
-name: React Generate Page Package
+name: Publish Package to npm
 
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - 'v*' # v로 시작하는 태그가 푸시되면 실행
 
 jobs:
-  build:
-    name: Package Build & Publish
+  publish:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      packages: write
-
     steps:
-      - name: Get version
-        id: version
-        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-
       - uses: actions/checkout@v3
-        with:
-          ref: ${{ github.ref }}
-
-      - uses: actions/setup-node@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
         with:
           node-version: '18'
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Commit updated package version
-        uses: stefanzweifel/git-auto-commit-action@v4
-        with:
-          commit_message: 'chore: Update package version'
-          branch: main
-
-      - name: Yarn install
-        run: |
-          export NODE_AUTH_TOKEN=${{ secrets.PACKAGE_PUBLISH_KEY_NPM }}  
-          yarn set version 4.8.1
-          yarn install --immutable
-
+          registry-url: 'https://registry.npmjs.org/'
+          scope: '@mj_yu'
+      
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      
       - name: Build
         run: yarn build
+      
+      - name: Publish to npm
+        run: npm publish --access public
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.PACKAGE_PUBLISH_KEY_NPM }}
-
-      - name: Yarn publish
-        run: yarn npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.PACKAGE_PUBLISH_KEY_NPM }}
+          NODE_AUTH_TOKEN: ${{ secrets.PACKAGE_PUBLISH_KEY_NPM }} 
