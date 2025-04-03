@@ -8,12 +8,8 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
 dist-ssr
 *.local
-
-.nvmrc
-.envrc
 
 # Editor directories and files
 .vscode/*
@@ -25,12 +21,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-package-lock.json
 
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/sdks
-!.yarn/versions
+.envrc
+.yarn
+package.tgz

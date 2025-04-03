@@ -5,22 +5,120 @@
 
 새로운 페이지를 빠르게 생성하기 위한 제너레이터를 제공합니다.
 
-1. **설치**
-   ```bash
-   # npm
-   npm install -D @mj_yu/react-generate-page
-   
-   # yarn
-   yarn add -D @mj_yu/react-generate-page
-   ```
+### 1. 설치
+```bash
+# npm
+npm install -D @mj_yu/react-generate-page
 
-2. **페이지 생성 명령어**
-   ```bash
-   npx generate-page <경로>/<페이지명>
-   
-   # 예시
-   npx generate-page testPath/testPage
-   ```
+# yarn
+yarn add -D @mj_yu/react-generate-page
+```
+
+### 2. 기본 사용법
+
+두 가지 방식으로 페이지를 생성할 수 있습니다:
+
+#### 대화형 모드
+```bash
+npx @mj_yu/react-generate-page
+```
+실행하면 다음과 같이 순차적으로 입력받습니다:
+```
+📁 페이지 생성 옵션을 선택해주세요:
+페이지 경로를 입력해주세요 (예: test/path): test/path
+페이지 이름을 입력해주세요 (예: TestPage): TestPage
+검색 조건이 필요한 화면인가요? (y/N):
+모델 인터페이스 디렉토리를 생성하시겠습니까? (models/interfaces/test/path) (y/N):
+모델 타입 디렉토리를 생성하시겠습니까? (models/types/test/path) (y/N):
+hooks/client 디렉토리를 생성하시겠습니까? (hooks/client/test/path) (y/N):
+```
+
+#### 명령줄 인자 모드
+```bash
+npx @mj_yu/react-generate-page <경로> <페이지명>
+
+# 예시
+npx @mj_yu/react-generate-page test/path TestPage
+```
+
+### 3. 생성되는 파일 구조
+
+#### 기본 파일 구조
+```
+src/
+├─ components/pages/test/path/
+│  ├─ TestPageComponent.tsx
+│  ├─ TestPageViewModel.tsx
+│  └─ index.ts
+└─ pages/test/path/
+   ├─ TestPagePage.tsx
+   └─ index.ts
+```
+
+#### 검색 조건이 있는 경우 추가 파일
+```
+src/
+└─ components/pages/test/path/
+   └─ TestPageCondition.tsx    # 검색 조건 컴포넌트
+```
+
+#### 선택적 디렉토리 생성
+```
+src/
+├─ models/interfaces/test/path/
+│  └─ index.ts
+├─ models/types/test/path/
+│  └─ index.ts
+└─ hooks/client/test/path/
+   └─ index.ts
+```
+
+### 4. 자동 생성되는 기능
+- 각 디렉토리에 `index.ts` 파일 자동 생성
+- 상위 디렉토리의 `index.ts` 파일에 export 구문 자동 추가
+- 파일명은 PascalCase로 자동 변환 (예: testPage → TestPage)
+  - 이미 PascalCase로 입력된 경우 그대로 유지
+- 폴더명은 입력한 형태 그대로 유지
+- 검색 조건 컴포넌트 자동 생성 (선택 시)
+  - 기본 검색 폼 구조 포함
+  - 스타일링된 검색 버튼 포함
+
+### 5. 생성되는 컴포넌트 예시
+
+#### Component (`TestPageComponent.tsx`)
+```typescript
+import { TestPageCondition } from './TestPageCondition';  // 검색 조건 선택 시
+
+export const TestPageComponent = () => {
+  return (
+    <div>
+      {/* 검색 조건 선택 시 */}
+      <div>
+        <TestPageCondition />
+      </div>
+    </div>
+  );
+};
+```
+
+#### Search Condition (`TestPageCondition.tsx`)
+```typescript
+export const TestPageCondition = () => {
+  return (
+    <form onSubmit={(e) => {
+      e.preventDefault();
+      // TODO: 검색 로직 구현
+    }}>
+      <button
+        type="submit"
+        className="ml-auto rounded bg-blue-500 px-4 py-2 text-white hover:bg-blue-600"
+      >
+        검색
+      </button>
+    </form>
+  );
+};
+```
 
 ## 📁 프로젝트 구조
 
@@ -41,15 +139,7 @@ src/
 ```typescript
 export const TestPageComponent = () => {
   return (
-    <div className="p-4">
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold">페이지 제목</h1>
-        <p className="text-gray-600">페이지 설명</p>
-      </div>
-      <div className="bg-white rounded-lg shadow p-4">
-        {/* 컴포넌트 내용 */}
-      </div>
-    </div>
+    <div></div>
   );
 };
 ```
@@ -91,115 +181,3 @@ export const TestPagePage = () => {
   );
 };
 ```
-
-## ⚙️ Path Alias 설정
-
-프로젝트는 다음과 같은 path alias를 사용합니다:
-
-```json
-{
-  "paths": {
-    "@components": ["src/components"],
-    "@components/*": ["src/components/*"],
-    "@models": ["src/models"],
-    "@models/*": ["src/models/*"],
-    "@modules": ["src/modules"],
-    "@modules/*": ["src/modules/*"],
-    "@assets": ["src/assets"],
-    "@assets/*": ["src/assets/*"],
-    "@hooks": ["src/hooks"],
-    "@hooks/*": ["src/hooks/*"],
-    "@store": ["src/store"],
-    "@store/*": ["src/store/*"],
-    "@styles/*": ["src/styles/*"],
-    "@icons": ["src/assets/icons"],
-    "@icons/*": ["src/assets/icons/*"],
-    "@images": ["src/assets/images"],
-    "@images/*": ["src/assets/images/*"]
-  }
-}
-```
-
-생성되는 모든 컴포넌트는 이 path alias를 사용하여 import 구문이 자동으로 생성됩니다.
-
-## 🤖 자동 PR 리뷰 설정 (Graphite Diamond)
-
-Graphite Diamond를 사용하여 자동 PR 리뷰를 설정할 수 있습니다.
-
-### 1. 리포지토리 기본 설정
-
-Settings → General에서 다음 설정을 적용:
-
-```
-✓ Pull Requests 섹션:
-  - [ ] Allow merge commits (비활성화)
-  - [x] Allow squash merging (활성화)
-  - [x] Allow rebase merging (활성화)
-  - [x] Automatically delete head branches (활성화)
-
-✓ Push Protection 섹션:
-  - [ ] Limit how many branches... (비활성화)
-```
-
-### 2. 브랜치 보호 규칙
-
-Settings → Branches → Add rule에서 다음 설정을 적용:
-
-```
-Branch name pattern: main
-
-✓ 보호 규칙:
-  - [x] Require a pull request before merging
-      └─ Required number of approvals: 1
-      └─ [ ] Dismiss stale pull request approvals (비활성화)
-  - [x] Require status checks to pass
-  - [x] Require conversation resolution
-  - [x] Require linear history
-  - [ ] Include administrators (비활성화)
-```
-
-### 3. CI 워크플로우
-
-`.github/workflows/ci.yml`:
-```yaml
-name: CI
-
-on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-  push:
-    branches: [main]
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-          cache: 'yarn'
-          
-      - name: Install dependencies
-        run: yarn install --frozen-lockfile
-        
-      - name: Type check
-        run: yarn tsc --noEmit
-        
-      - name: Lint
-        run: yarn eslint .
-```
-
-### 4. Graphite Diamond 설치
-
-1. [Graphite Diamond App](https://github.com/apps/graphite-code-review)을 GitHub 리포지토리에 설치
-2. PR 생성 시 자동으로 코드 리뷰 수행
-3. 코드 스타일, 패턴 및 모범 사례 검사
-
-자동 리뷰는 다음 규칙들을 검사합니다:
-- 컴포넌트 Props 인터페이스 명명 규칙
-- ViewModel 인터페이스 및 Context 패턴
-- 올바른 import path 사용
-- 파일 및 컴포넌트 명명 규칙

@@ -14,6 +14,11 @@ function toCamelCase(str: string): string {
 }
 
 function toPascalCase(str: string): string {
+  // 이미 PascalCase로 입력된 경우 그대로 반환
+  if (/^[A-Z][a-zA-Z0-9]*$/.test(str)) {
+    return str;
+  }
+
   return str
     .split(/[-_\s]+/)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
@@ -21,36 +26,49 @@ function toPascalCase(str: string): string {
 }
 
 interface GeneratePageOptions {
-  pagePath: string; // 예: testPath/testPage
-  pageName: string; // 예: PaperSetting
+  pagePath: string; // 예: test/path
+  pageName: string; // 예: TestPage
 }
 
-function generateComponent(options: GeneratePageOptions): string {
-  return `export const ${options.pageName}Component = () => {
+function generateCondition(options: GeneratePageOptions): string {
+  return `export const ${options.pageName}Condition = () => {
   return (
-    <div className="p-4">
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold">페이지 제목</h1>
-        <p className="text-gray-600">페이지 설명</p>
-      </div>
-      <div className="bg-white rounded-lg shadow p-4">
-        <div className="overflow-x-auto">
-          <table className="min-w-full">
-            <thead>
-              <tr>
-                <th className="px-4 py-2 text-center border-b">No</th>
-                {/* 필요한 컬럼 추가 */}
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td className="px-4 py-2 text-center border-b">1</td>
-                {/* 필요한 데이터 추가 */}
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
+    <form onSubmit={(e) => {
+      e.preventDefault();
+      // TODO: 검색 로직 구현
+    }}>
+       <button
+          type="submit"
+          className="ml-auto rounded bg-blue-500 px-4 py-2 text-white hover:bg-blue-600"
+        >
+          검색
+        </button>
+    </form>
+  );
+};
+`;
+}
+
+function generateComponent(
+  options: GeneratePageOptions,
+  hasSearchCondition: boolean
+): string {
+  return `${
+    hasSearchCondition
+      ? `\nimport { ${options.pageName}Condition } from './${options.pageName}Condition';`
+      : ""
+  }
+
+export const ${options.pageName}Component = () => {
+  return (
+    <div>
+      ${
+        hasSearchCondition
+          ? `<div>
+        <${options.pageName}Condition />
+      </div>`
+          : ""
+      }
     </div>
   );
 };
@@ -170,25 +188,42 @@ async function askQuestion(question: string): Promise<string> {
 }
 
 async function generatePageFiles(options: GeneratePageOptions) {
-  console.log("\n📁 모델 생성 옵션을 선택해주세요:");
+  console.log("\n📁 페이지 생성 옵션을 선택해주세요:");
+
+  const pagePath = await askQuestion(
+    `페이지 경로를 입력해주세요 (예: test/path): `
+  );
+
+  const pageName = await askQuestion(
+    `페이지 이름을 입력해주세요 (예: TestPage): `
+  );
+
+  const hasSearchCondition = await askQuestion(
+    `검색 조건이 필요한 화면인가요? (y/N): `
+  );
 
   const createInterface = await askQuestion(
-    `모델 인터페이스 디렉토리를 생성하시겠습니까? (models/interfaces/${options.pagePath}) (y/N): `
+    `모델 인터페이스 디렉토리를 생성하시겠습니까? (models/interfaces/${pagePath}) (y/N): `
   );
 
   const createType = await askQuestion(
-    `모델 타입 디렉토리를 생성하시겠습니까? (models/types/${options.pagePath}) (y/N): `
+    `모델 타입 디렉토리를 생성하시겠습니까? (models/types/${pagePath}) (y/N): `
   );
 
   const createHooks = await askQuestion(
-    `훅스 디렉토리를 생성하시겠습니까? (hooks/client/${options.pagePath}) (y/N): `
+    `훅스 디렉토리를 생성하시겠습니까? (hooks/client/${pagePath}) (y/N): `
   );
 
-  const componentDir = path.join("src/components/pages", options.pagePath);
-  const pagesDir = path.join("src/pages", options.pagePath);
-  const interfaceDir = path.join("src/models/interfaces", options.pagePath);
-  const typeDir = path.join("src/models/types", options.pagePath);
-  const hooksDir = path.join("src/hooks/client", options.pagePath);
+  const componentDir = path.join("src/components/pages", pagePath);
+  const pagesDir = path.join("src/pages", pagePath);
+  const interfaceDir = path.join("src/models/interfaces", pagePath);
+  const typeDir = path.join("src/models/types", pagePath);
+  const hooksDir = path.join("src/hooks/client", pagePath);
+
+  const pageOptions: GeneratePageOptions = {
+    pagePath,
+    pageName: toPascalCase(pageName),
+  };
 
   // 기본 디렉토리 생성
   ensureDirectoryExists(componentDir);
@@ -210,48 +245,65 @@ async function generatePageFiles(options: GeneratePageOptions) {
     fs.writeFileSync(path.join(hooksDir, "index.ts"), "");
   }
 
+  const needSearchCondition = hasSearchCondition.toLowerCase() === "y";
+
+  // 검색 조건 컴포넌트 생성
+  if (needSearchCondition) {
+    fs.writeFileSync(
+      path.join(componentDir, `${pageOptions.pageName}Condition.tsx`),
+      generateCondition(pageOptions)
+    );
+  }
+
   // components 디렉토리 파일 생성
   fs.writeFileSync(
-    path.join(componentDir, `${options.pageName}Component.tsx`),
-    generateComponent(options)
+    path.join(componentDir, `${pageOptions.pageName}Component.tsx`),
+    generateComponent(pageOptions, needSearchCondition)
   );
   fs.writeFileSync(
-    path.join(componentDir, `${options.pageName}ViewModel.tsx`),
-    generateViewModel(options)
+    path.join(componentDir, `${pageOptions.pageName}ViewModel.tsx`),
+    generateViewModel(pageOptions)
   );
   fs.writeFileSync(
     path.join(componentDir, "index.ts"),
-    generateComponentIndex(options)
+    generateComponentIndex(pageOptions)
   );
 
   // pages 디렉토리 파일 생성
   fs.writeFileSync(
-    path.join(pagesDir, `${options.pageName}Page.tsx`),
-    generatePage(options)
+    path.join(pagesDir, `${pageOptions.pageName}Page.tsx`),
+    generatePage(pageOptions)
   );
-  fs.writeFileSync(path.join(pagesDir, "index.ts"), generatePageIndex(options));
+  fs.writeFileSync(
+    path.join(pagesDir, "index.ts"),
+    generatePageIndex(pageOptions)
+  );
 
   // 상위 디렉토리의 index.ts 파일들 생성
-  ensureParentIndexFiles("src/components/pages", options.pagePath);
-  ensureParentIndexFiles("src/pages", options.pagePath);
+  ensureParentIndexFiles("src/components/pages", pagePath);
+  ensureParentIndexFiles("src/pages", pagePath);
 
   if (createInterface.toLowerCase() === "y") {
-    ensureParentIndexFiles("src/models/interfaces", options.pagePath);
+    ensureParentIndexFiles("src/models/interfaces", pagePath);
   }
   if (createType.toLowerCase() === "y") {
-    ensureParentIndexFiles("src/models/types", options.pagePath);
+    ensureParentIndexFiles("src/models/types", pagePath);
   }
   if (createHooks.toLowerCase() === "y") {
-    ensureParentIndexFiles("src/hooks/client", options.pagePath);
+    ensureParentIndexFiles("src/hooks/client", pagePath);
   }
 
   console.log(`✨ 페이지가 성공적으로 생성되었습니다!
 
-생성된 파일:
-- ${path.join(componentDir, `${options.pageName}Component.tsx`)}
-- ${path.join(componentDir, `${options.pageName}ViewModel.tsx`)}
+생성된 파일:${
+    needSearchCondition
+      ? `\n- ${path.join(componentDir, `${pageOptions.pageName}Condition.tsx`)}`
+      : ""
+  }
+- ${path.join(componentDir, `${pageOptions.pageName}Component.tsx`)}
+- ${path.join(componentDir, `${pageOptions.pageName}ViewModel.tsx`)}
 - ${path.join(componentDir, "index.ts")}
-- ${path.join(pagesDir, `${options.pageName}Page.tsx`)}
+- ${path.join(pagesDir, `${pageOptions.pageName}Page.tsx`)}
 - ${path.join(pagesDir, "index.ts")}${
     createInterface.toLowerCase() === "y"
       ? `\n- ${path.join(interfaceDir, "index.ts")}`
@@ -270,16 +322,18 @@ async function generatePageFiles(options: GeneratePageOptions) {
 `);
 }
 
-// 사용 예시
-const rawPath = process.argv[2]; // 예: testPath/testPage
-const pathParts = rawPath.split("/");
-const pageName = toPascalCase(pathParts.pop() || "");
-const parentPath = pathParts.map(toCamelCase).join("/");
-const options: GeneratePageOptions = {
-  pagePath: parentPath
-    ? `${parentPath}/${toCamelCase(pageName)}`
-    : toCamelCase(pageName),
-  pageName,
-};
+// 메인 실행 부분
+if (process.argv.length < 2) {
+  generatePageFiles({
+    pagePath: "",
+    pageName: "",
+  }).catch(console.error);
+} else {
+  const pagePath = process.argv[2] || "";
+  const pageName = process.argv[3] || "";
 
-generatePageFiles(options).catch(console.error);
+  generatePageFiles({
+    pagePath,
+    pageName,
+  }).catch(console.error);
+}
