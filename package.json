@@ -1,6 +1,6 @@
 {
-  "name": "@jammin/react-generate-page",
-  "version": "0.0.1",
+  "name": "@mj_yu/react-generate-page",
+  "version": "0.0.2",
   "type": "module",
   "email": "y1207cc@gmail.com",
   "description": "리액트 자료구조를 기반으로 페이지 자동 생성 제너레이터",
@@ -17,8 +17,8 @@
   "dependencies": {
     "ts-node": "^10.9.2"
   },
-  "author": "",
-  "license": "ISC",
+  "author": "MyeongJun Yu <y1207cc@gmail.com>",
+  "license": "MIT",
   "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e",
   "devDependencies": {
     "@types/node": "^22.14.0",

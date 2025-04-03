@@ -8,10 +8,10 @@
 1. **설치**
    ```bash
    # npm
-   npm install -D @jammin/react-generate-page
+   npm install -D @mj_yu/react-generate-page
    
    # yarn
-   yarn add -D @jammin/react-generate-page
+   yarn add -D @mj_yu/react-generate-page
    ```
 
 2. **페이지 생성 명령어**
@@ -126,9 +126,7 @@ export const TestPagePage = () => {
 
 Graphite Diamond를 사용하여 자동 PR 리뷰를 설정할 수 있습니다.
 
-### 1. 필수 설정
-
-#### 리포지토리 기본 설정
+### 1. 리포지토리 기본 설정
 
 Settings → General에서 다음 설정을 적용:
 
@@ -143,7 +141,7 @@ Settings → General에서 다음 설정을 적용:
   - [ ] Limit how many branches... (비활성화)
 ```
 
-#### 브랜치 보호 규칙
+### 2. 브랜치 보호 규칙
 
 Settings → Branches → Add rule에서 다음 설정을 적용:
 
@@ -207,5 +205,3 @@ jobs:
       - name: Lint
         run: yarn eslint .
 ```
-
-이 워크플로우는 TypeScript 타입 체크와 ESLint 검사를 수행합니다.
