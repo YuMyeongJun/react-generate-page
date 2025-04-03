@@ -1,34 +1,53 @@
-name: Publish Package to npm
+name: React Generate Page Package
 
 on:
   push:
     tags:
-      - 'v*' # v로 시작하는 태그가 푸시되면 실행
+      - 'v*.*.*'
 
 jobs:
-  publish:
+  build:
+    name: Package Build & Publish
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
     steps:
+      - name: Get version
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
       - uses: actions/checkout@v3
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+        with:
+          ref: ${{ github.ref }}
+
+      - uses: actions/setup-node@v3
         with:
           node-version: '18'
-          registry-url: 'https://registry.npmjs.org/'
-          scope: '@mj_yu'
-      
-      - name: Install dependencies
-        run: yarn install --frozen-lockfile
-      
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Update package version
+        run: npm version ${{ steps.version.outputs.version }} --no-git-tag-version
+
+      - name: Commit updated package version
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: 'chore: Update package version'
+          branch: main
+
+      - name: Update Git tag
+        run: |
+          git tag ${{ github.ref_name }} -f
+          git push origin ${{ github.ref_name }} -f
+
+      - name: Yarn install
+        run: |
+          yarn install --frozen-lockfile
+
       - name: Build
         run: yarn build
 
-      - name: Create .npmrc
-        run: |
-          echo "//registry.npmjs.org/:_authToken=${{ secrets.PACKAGE_PUBLISH_KEY_NPM }}" > .npmrc
-          echo "@mj_yu:registry=https://registry.npmjs.org/" >> .npmrc
-      
       - name: Publish to npm
         run: npm publish --access public
         env:
