@@ -2,7 +2,23 @@ import * as fs from "fs";
 import * as path from "path";
 import * as readline from "readline";
 
+function toCamelCase(str: string): string {
+  return str
+    .split(/[-_\s]+/)
+    .map((word, index) =>
+      index === 0
+        ? word.toLowerCase()
+        : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+    )
+    .join("");
+}
+
 function toPascalCase(str: string): string {
+  // 이미 PascalCase로 입력된 경우 그대로 반환
+  if (/^[A-Z][a-zA-Z0-9]*$/.test(str)) {
+    return str;
+  }
+
   return str
     .split(/[-_\s]+/)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
@@ -14,10 +30,46 @@ interface GeneratePageOptions {
   pageName: string; // 예: TestPage
 }
 
-function generateComponent(options: GeneratePageOptions): string {
-  return `export const ${options.pageName}Component = () => {
+function generateCondition(options: GeneratePageOptions): string {
+  return `export const ${options.pageName}Condition = () => {
   return (
-    <div></div>
+    <form onSubmit={(e) => {
+      e.preventDefault();
+      // TODO: 검색 로직 구현
+    }}>
+       <button
+          type="submit"
+          className="ml-auto rounded bg-blue-500 px-4 py-2 text-white hover:bg-blue-600"
+        >
+          검색
+        </button>
+    </form>
+  );
+};
+`;
+}
+
+function generateComponent(
+  options: GeneratePageOptions,
+  hasSearchCondition: boolean
+): string {
+  return `${
+    hasSearchCondition
+      ? `\nimport { ${options.pageName}Condition } from './${options.pageName}Condition';`
+      : ""
+  }
+
+export const ${options.pageName}Component = () => {
+  return (
+    <div>
+      ${
+        hasSearchCondition
+          ? `<div>
+        <${options.pageName}Condition />
+      </div>`
+          : ""
+      }
+    </div>
   );
 };
 `;
@@ -76,6 +128,11 @@ export * from './${options.pageName}ViewModel';
 
 function generatePageIndex(options: GeneratePageOptions): string {
   return `export * from './${options.pageName}Page';
+`;
+}
+
+function generateModelIndex(options: GeneratePageOptions): string {
+  return `// Add model exports here
 `;
 }
 
@@ -141,6 +198,10 @@ async function generatePageFiles(options: GeneratePageOptions) {
     `페이지 이름을 입력해주세요 (예: TestPage): `
   );
 
+  const hasSearchCondition = await askQuestion(
+    `검색 조건이 필요한 화면인가요? (y/N): `
+  );
+
   const createInterface = await askQuestion(
     `모델 인터페이스 디렉토리를 생성하시겠습니까? (models/interfaces/${pagePath}) (y/N): `
   );
@@ -184,10 +245,20 @@ async function generatePageFiles(options: GeneratePageOptions) {
     fs.writeFileSync(path.join(hooksDir, "index.ts"), "");
   }
 
+  const needSearchCondition = hasSearchCondition.toLowerCase() === "y";
+
+  // 검색 조건 컴포넌트 생성
+  if (needSearchCondition) {
+    fs.writeFileSync(
+      path.join(componentDir, `${pageOptions.pageName}Condition.tsx`),
+      generateCondition(pageOptions)
+    );
+  }
+
   // components 디렉토리 파일 생성
   fs.writeFileSync(
     path.join(componentDir, `${pageOptions.pageName}Component.tsx`),
-    generateComponent(pageOptions)
+    generateComponent(pageOptions, needSearchCondition)
   );
   fs.writeFileSync(
     path.join(componentDir, `${pageOptions.pageName}ViewModel.tsx`),
@@ -224,7 +295,11 @@ async function generatePageFiles(options: GeneratePageOptions) {
 
   console.log(`✨ 페이지가 성공적으로 생성되었습니다!
 
-생성된 파일:
+생성된 파일:${
+    needSearchCondition
+      ? `\n- ${path.join(componentDir, `${pageOptions.pageName}Condition.tsx`)}`
+      : ""
+  }
 - ${path.join(componentDir, `${pageOptions.pageName}Component.tsx`)}
 - ${path.join(componentDir, `${pageOptions.pageName}ViewModel.tsx`)}
 - ${path.join(componentDir, "index.ts")}
