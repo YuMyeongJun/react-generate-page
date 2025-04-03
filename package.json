@@ -7,7 +7,7 @@
   "type": "module",
   "main": "dist/generate-page.js",
   "bin": {
-    "@mj_yu/react-generate-page": "./dist/generate-page.js"
+    "react-generate-page": "./dist/generate-page.js"
   },
   "files": [
     "dist",
@@ -18,16 +18,13 @@
     "generate:page": "NODE_OPTIONS=\"--loader ts-node/esm\" node generate-page.ts",
     "prepublishOnly": "npm run build"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/YuMyeongJun/react-generate-page.git"
-  },
+  "repository": "git+https://github.com/YuMyeongJun/react-generate-page.git",
   "bugs": {
     "url": "https://github.com/YuMyeongJun/react-generate-page/issues"
   },
   "homepage": "https://github.com/YuMyeongJun/react-generate-page#readme",
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com",
+    "registry": "https://registry.npmjs.org/",
     "access": "public"
   },
   "devDependencies": {
