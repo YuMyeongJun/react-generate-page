@@ -8,10 +8,10 @@
 1. **설치**
    ```bash
    # npm
-   npm install -D @jammin/react-generate-page
+   npm install -D @mj_yu/react-generate-page
    
    # yarn
-   yarn add -D @jammin/react-generate-page
+   yarn add -D @mj_yu/react-generate-page
    ```
 
 2. **페이지 생성 명령어**
@@ -126,9 +126,7 @@ export const TestPagePage = () => {
 
 Graphite Diamond를 사용하여 자동 PR 리뷰를 설정할 수 있습니다.
 
-### 1. 필수 설정
-
-#### 리포지토리 기본 설정
+### 1. 리포지토리 기본 설정
 
 Settings → General에서 다음 설정을 적용:
 
@@ -143,7 +141,7 @@ Settings → General에서 다음 설정을 적용:
   - [ ] Limit how many branches... (비활성화)
 ```
 
-#### 브랜치 보호 규칙
+### 2. 브랜치 보호 규칙
 
 Settings → Branches → Add rule에서 다음 설정을 적용:
 
@@ -160,21 +158,7 @@ Branch name pattern: main
   - [ ] Include administrators (비활성화)
 ```
 
-### 2. Graphite Diamond 설치
-
-1. [Graphite Diamond App](https://github.com/apps/graphite-code-review)을 GitHub 리포지토리에 설치
-2. PR 생성 시 자동으로 코드 리뷰 수행
-3. 코드 스타일, 패턴 및 모범 사례 검사
-
-자동 리뷰는 다음 규칙들을 검사합니다:
-- 컴포넌트 Props 인터페이스 명명 규칙
-- ViewModel 인터페이스 및 Context 패턴
-- 올바른 import path 사용
-- 파일 및 컴포넌트 명명 규칙
-
-### 3. CI 워크플로우 (선택사항)
-
-추가적인 코드 품질 검사를 원하는 경우, 다음과 같은 CI 워크플로우를 설정할 수 있습니다:
+### 3. CI 워크플로우
 
 `.github/workflows/ci.yml`:
 ```yaml
@@ -208,4 +192,14 @@ jobs:
         run: yarn eslint .
 ```
 
-이 워크플로우는 TypeScript 타입 체크와 ESLint 검사를 수행합니다.
+### 4. Graphite Diamond 설치
+
+1. [Graphite Diamond App](https://github.com/apps/graphite-code-review)을 GitHub 리포지토리에 설치
+2. PR 생성 시 자동으로 코드 리뷰 수행
+3. 코드 스타일, 패턴 및 모범 사례 검사
+
+자동 리뷰는 다음 규칙들을 검사합니다:
+- 컴포넌트 Props 인터페이스 명명 규칙
+- ViewModel 인터페이스 및 Context 패턴
+- 올바른 import path 사용
+- 파일 및 컴포넌트 명명 규칙
