@@ -158,7 +158,21 @@ Branch name pattern: main
   - [ ] Include administrators (비활성화)
 ```
 
-### 3. CI 워크플로우
+### 2. Graphite Diamond 설치
+
+1. [Graphite Diamond App](https://github.com/apps/graphite-code-review)을 GitHub 리포지토리에 설치
+2. PR 생성 시 자동으로 코드 리뷰 수행
+3. 코드 스타일, 패턴 및 모범 사례 검사
+
+자동 리뷰는 다음 규칙들을 검사합니다:
+- 컴포넌트 Props 인터페이스 명명 규칙
+- ViewModel 인터페이스 및 Context 패턴
+- 올바른 import path 사용
+- 파일 및 컴포넌트 명명 규칙
+
+### 3. CI 워크플로우 (선택사항)
+
+추가적인 코드 품질 검사를 원하는 경우, 다음과 같은 CI 워크플로우를 설정할 수 있습니다:
 
 `.github/workflows/ci.yml`:
 ```yaml
@@ -191,15 +205,3 @@ jobs:
       - name: Lint
         run: yarn eslint .
 ```
-
-### 4. Graphite Diamond 설치
-
-1. [Graphite Diamond App](https://github.com/apps/graphite-code-review)을 GitHub 리포지토리에 설치
-2. PR 생성 시 자동으로 코드 리뷰 수행
-3. 코드 스타일, 패턴 및 모범 사례 검사
-
-자동 리뷰는 다음 규칙들을 검사합니다:
-- 컴포넌트 Props 인터페이스 명명 규칙
-- ViewModel 인터페이스 및 Context 패턴
-- 올바른 import path 사용
-- 파일 및 컴포넌트 명명 규칙
