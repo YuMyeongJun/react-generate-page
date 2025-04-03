@@ -1,28 +1,35 @@
 {
   "name": "@mj_yu/react-generate-page",
-  "version": "0.1.4",
-  "type": "module",
-  "email": "y1207cc@gmail.com",
+  "version": "0.1.5",
   "description": "리액트 자료구조를 기반으로 페이지 자동 생성 제너레이터",
+  "author": "MyeongJun Yu <y1207cc@gmail.com>",
+  "license": "MIT",
+  "type": "module",
   "main": "dist/generate-page.js",
+  "bin": {
+    "@mj_yu/react-generate-page": "./dist/generate-page.js"
+  },
   "files": [
     "dist",
     "README.md"
   ],
   "scripts": {
-    "generate:page": "NODE_OPTIONS=\"--loader ts-node/esm\" node generate-page.ts",
     "build": "tsc",
+    "generate:page": "NODE_OPTIONS=\"--loader ts-node/esm\" node generate-page.ts",
     "prepublishOnly": "npm run build"
   },
-  "author": "MyeongJun Yu <y1207cc@gmail.com>",
-  "license": "MIT",
-  "packageManager": "yarn@1.22.19",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YuMyeongJun/react-generate-page.git"
+  },
+  "bugs": {
+    "url": "https://github.com/YuMyeongJun/react-generate-page/issues"
+  },
+  "homepage": "https://github.com/YuMyeongJun/react-generate-page#readme",
   "devDependencies": {
     "@types/node": "^22.14.0",
-    "typescript": "^5.0.0",
-    "ts-node": "^10.9.2"
+    "ts-node": "^10.9.2",
+    "typescript": "^5.0.0"
   },
-  "bin": {
-    "@mj_yu/react-generate-page": "./dist/generate-page.js"
-  }
+  "packageManager": "yarn@1.22.19"
 }
