@@ -19,7 +19,9 @@ jobs:
           scope: '@mj_yu'
       
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run:  | 
+          yarn set version 4.8.1
+          yarn install --frozen-lockfile
       
       - name: Build
         run: yarn build
