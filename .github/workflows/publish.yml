@@ -26,8 +26,14 @@ jobs:
       
       - name: Build
         run: yarn build
+
+      - name: Create .npmrc
+        run: |
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GH_TOKEN }}" > .npmrc
+          echo "@mj_yu:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "registry=https://npm.pkg.github.com" >> .npmrc
       
       - name: Publish to GitHub Packages
         run: npm publish
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }} 
+          NODE_AUTH_TOKEN: ${{ secrets.GH_TOKEN }} 
