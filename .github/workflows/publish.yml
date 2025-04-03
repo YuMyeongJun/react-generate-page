@@ -38,16 +38,17 @@ jobs:
 
       - name: Yarn install
         run: |
-          export NODE_AUTH_TOKEN=${{ secrets.PACKAGE_PUBLISH_KEY_NPM }} 
           yarn set version 4.8.1
           yarn install --immutable
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.PACKAGE_PUBLISH_KEY_NPM }}
 
       - name: Build
-        run: | 
-          export NODE_AUTH_TOKEN=${{ secrets.PACKAGE_PUBLISH_KEY_NPM }} 
-          yarn build
+        run: yarn build
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.PACKAGE_PUBLISH_KEY_NPM }}
 
       - name: Yarn publish
-        run: |
-          export NODE_AUTH_TOKEN=${{ secrets.PACKAGE_PUBLISH_KEY_NPM }} 
-          yarn npm publish --access public
+        run: yarn npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.PACKAGE_PUBLISH_KEY_NPM }}
