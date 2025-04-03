@@ -6,9 +6,7 @@
   "license": "MIT",
   "type": "module",
   "main": "dist/generate-page.js",
-  "bin": {
-    "react-generate-page": "./dist/generate-page.js"
-  },
+  "bin": "./dist/generate-page.js",
   "files": [
     "dist",
     "README.md"
@@ -32,5 +30,5 @@
     "ts-node": "^10.9.2",
     "typescript": "^5.0.0"
   },
-  "packageManager": "yarn@1.22.19"
+  "packageManager": "yarn@4.8.1"
 }

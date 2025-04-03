@@ -43,12 +43,13 @@ jobs:
 
       - name: Yarn install
         run: |
-          yarn install --frozen-lockfile
+          yarn set version 4.8.1
+          yarn
 
       - name: Build
         run: yarn build
 
-      - name: Publish to npm
-        run: npm publish --access public
+      - name: Yarn publish
+        run: yarn npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.PACKAGE_PUBLISH_KEY_NPM }} 
