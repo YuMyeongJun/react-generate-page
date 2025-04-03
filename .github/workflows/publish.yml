@@ -1,35 +1,39 @@
-name: Publish Package to npm
+name: React Generate Page Package
 
 on:
   push:
     tags:
-      - 'v*' # v로 시작하는 태그가 푸시되면 실행
+      - 'v*.*.*'
 
 jobs:
-  publish:
+  build:
+    name: Package Build & Publish
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - uses: actions/setup-node@v3
         with:
           node-version: '18'
-          registry-url: 'https://registry.npmjs.org/'
+          registry-url: 'https://registry.npmjs.org'
           scope: '@mj_yu'
-      
+
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
-      
+        run: |
+          yarn set version 4.8.1
+          yarn install
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.PACKAGE_PUBLISH_KEY_NPM }}
+
       - name: Build
         run: yarn build
-
-      - name: Create .npmrc
-        run: |
-          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > .npmrc
-          echo "@mj_yu:registry=https://registry.npmjs.org/" >> .npmrc
-      
-      - name: Publish to npm
-        run: npm publish --access public
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }} 
+          NODE_AUTH_TOKEN: ${{ secrets.PACKAGE_PUBLISH_KEY_NPM }}
+
+      - name: Publish to npm
+        run: yarn npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.PACKAGE_PUBLISH_KEY_NPM }} 
