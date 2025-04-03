@@ -17,6 +17,9 @@ jobs:
           node-version: '18'
           registry-url: 'https://registry.npmjs.org/'
           scope: '@mj_yu'
+
+      - name: Enable Corepack
+        run: corepack enable
       
       - name: Install dependencies
         run:  | 
