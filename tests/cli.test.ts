@@ -489,3 +489,78 @@ test("--cwd generates into another directory", () => {
   assert.ok(fs.existsSync(path.join(target, "src/components/pages/a/b/ThingComponent.tsx")));
   assert.deepEqual(tree(elsewhere), []);
 });
+
+/* ------------------------------------------- presets and introspection */
+
+test("--list-presets describes every built-in preset", () => {
+  const r = run(["--list-presets"], project());
+  assert.equal(r.status, 0, r.all);
+  for (const name of ["react-mvvm", "next-app", "remix", "vue"]) {
+    assert.match(r.stdout, new RegExp(name));
+  }
+  assert.match(r.stdout, /\(default\)/);
+});
+
+test("--print-config prints the merged config to stdout and notes to stderr", () => {
+  const dir = project({
+    "generate-page.config.json": JSON.stringify({ root: "app" }),
+  });
+  const r = run(["--print-config"], dir);
+  assert.equal(r.status, 0, r.all);
+  // stdout must be pipeable into jq, so commentary belongs on stderr.
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.root, "app");
+  assert.ok(parsed.targets.some((t: { id: string }) => t.id === "component"));
+  assert.match(r.stderr, /config file/);
+});
+
+test("--print-config shows the preset merge when there is no config file", () => {
+  const r = run(["--print-config", "--preset", "vue"], project());
+  assert.equal(r.status, 0, r.all);
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.root, "src");
+  assert.match(r.stderr, /"vue" preset/);
+});
+
+test("the next-app root is read from the repo, not defaulted to src", () => {
+  // Shipping root:"src" and meeting a repo whose router is app/ at the top
+  // produces src/app/..., a folder Next does not route.
+  const atRoot = project({ "app/page.tsx": "export default function P(){return null}\n" });
+  const r = run(["reports", "Sales", "--yes", "--preset", "next-app"], atRoot);
+  assert.equal(r.status, 0, r.all);
+  assert.ok(fs.existsSync(path.join(atRoot, "app/reports/page.tsx")));
+  assert.ok(!fs.existsSync(path.join(atRoot, "src/app/reports/page.tsx")));
+  assert.match(r.stdout, /because app\/ is at the repository root/);
+
+  const underSrc = project({ "src/app/page.tsx": "export default function P(){return null}\n" });
+  assert.equal(run(["reports", "Sales", "--yes", "--preset", "next-app"], underSrc).status, 0);
+  assert.ok(fs.existsSync(path.join(underSrc, "src/app/reports/page.tsx")));
+});
+
+test("init on a Next repo drafts the next-app preset, not the default", () => {
+  const dir = project({ "app/page.tsx": "" });
+  fs.writeFileSync(
+    path.join(dir, "package.json"),
+    JSON.stringify({ name: "n", version: "1.0.0", dependencies: { next: "15.0.0", react: "19.0.0" } })
+  );
+  const r = run(["init", "--dry-run"], dir);
+  assert.equal(r.status, 0, r.all);
+  assert.match(r.stdout, /next@15\.0\.0/);
+  assert.match(r.stdout, /preset: "next-app"/);
+  assert.match(r.stdout, /root: "\."/);
+});
+
+test("every preset generates something that is not empty and lands under root", () => {
+  for (const preset of ["react-mvvm", "next-app", "remix", "vue"]) {
+    const dir = project();
+    const r = run(["a/b", "Thing", "--yes", "--preset", preset], dir);
+    assert.equal(r.status, 0, `${preset}: ${r.all}`);
+    const files = tree(dir);
+    assert.ok(files.length > 0, `${preset} generated nothing`);
+    for (const f of files) {
+      assert.ok(!/\{\{/.test(f), `${preset}: unresolved token in ${f}`);
+      const body = fs.readFileSync(path.join(dir, f), "utf-8");
+      assert.ok(!/\{\{\s*[A-Za-z0-9_]+\s*\}\}/.test(body), `${preset}: unresolved token inside ${f}`);
+    }
+  }
+});

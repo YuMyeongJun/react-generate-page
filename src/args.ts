@@ -11,7 +11,7 @@
 export class ArgError extends Error {}
 
 export interface ParsedArgs {
-  command: "generate" | "init" | "help" | "version";
+  command: "generate" | "init" | "help" | "version" | "print-config" | "list-presets";
   positional: string[];
   dryRun: boolean;
   yes: boolean;
@@ -29,6 +29,8 @@ export interface ParsedArgs {
 
 const VALUE_FLAGS = new Set(["--config", "--cwd", "--preset", "--out"]);
 const BOOL_FLAGS = new Set([
+  "--print-config",
+  "--list-presets",
   "--dry-run",
   "--yes",
   "-y",
@@ -87,6 +89,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
       else if (arg === "--no-fix") parsed.fix = false;
       else if (arg === "--keep-on-fail") parsed.keepOnFail = true;
       else if (arg === "--force") parsed.force = true;
+      else if (arg === "--print-config") parsed.command = "print-config";
+      else if (arg === "--list-presets") parsed.command = "list-presets";
       else if (arg === "--help" || arg === "-h") parsed.command = "help";
       else if (arg === "--version" || arg === "-v") parsed.command = "version";
       continue;
@@ -101,7 +105,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     parsed.flagOverrides[name] = !negated;
   }
 
-  if (parsed.command === "generate" && parsed.positional[0] === "init") {
+  if (parsed.positional[0] === "init" && parsed.command === "generate") {
     parsed.command = "init";
     parsed.positional.shift();
   }
@@ -138,6 +142,8 @@ Options
   --cwd <dir>          treat this directory as the project root
   --out <dir>          (init) write the draft here
   --force              overwrite existing files instead of stopping
+  --print-config       print the effective config, preset merge included, and exit
+  --list-presets       list the built-in presets and exit
   --no-verify          skip the checks configured in verify.commands
   --no-fix             do not run verify.fixCommands when a check fails
   --keep-on-fail       keep generated files when verification fails

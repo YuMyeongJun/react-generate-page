@@ -77,6 +77,8 @@ npx @mj_yu/react-generate-page init [옵션]
 | `--cwd <디렉토리>` | 이 디렉토리를 프로젝트 루트로 본다 |
 | `--out <파일>` | (`init`) 초안을 여기에 쓴다 |
 | `--force` | 멈추지 않고 기존 파일을 덮어쓴다 |
+| `--print-config` | 프리셋 병합까지 반영된 최종 설정을 출력하고 끝낸다 |
+| `--list-presets` | 내장 프리셋을 나열하고 끝낸다 |
 | `--no-verify` | `verify.commands` 를 건너뛴다 |
 | `--no-fix` | 검사가 실패해도 `verify.fixCommands` 를 돌리지 않는다 |
 | `--keep-on-fail` | 검사가 실패해도 생성한 파일을 남긴다 |
@@ -181,16 +183,70 @@ JSX 자신의 이중 중괄호(`value={{ ... }}`)는 건드리지 않는다.
 
 ### 프리셋
 
-| 이름 | 무엇 |
-|---|---|
-| `react-mvvm` | **기본값.** Component / ViewModel / Page / Condition + `models/interfaces` · `models/types` · `hooks/client`. 0.1.37 까지의 출력과 바이트 단위로 같다. |
-| `next-app` | Next.js app router — `page.tsx`, 선택적 `loading.tsx` · `error.tsx` |
-| `remix` | Remix / React Router 파일 라우트, 선택적 loader |
-| `vue` | Vue 3 SFC, 선택적 컴포저블 |
+`npx @mj_yu/react-generate-page --list-presets` 가 대상 디렉토리와 플래그까지
+같이 보여준다.
 
-`react-mvvm` 은 이미 배포된 동작의 복사본이고, 0.1.37 에서 떠온 픽스처로 테스트가
-고정하고 있다. 나머지 셋은 **초안**이다 — 그 종류의 실제 저장소에 대고 재보지
-않았으니, `--dry-run` 으로 보고 고쳐 쓴 다음에 믿어라.
+| 이름 | 무엇 | 무엇에 대고 쟀나 |
+|---|---|---|
+| `react-mvvm` | **기본값.** Component / ViewModel / Page / Condition + `models/interfaces` · `models/types` · `hooks/client` | 0.1.37 에서 떠온 픽스처와 바이트 단위 비교 |
+| `next-app` | Next.js app router — `page.tsx`, 선택적 `loading.tsx` · `error.tsx` | Next 15 + React 19, 진짜 `tsc` |
+| `remix` | Remix / React Router 파일 라우트, 선택적 loader | React Router 7 + React 19, 진짜 `tsc` |
+| `vue` | Vue 3 SFC, 선택적 컴포저블 | Vue 3, 진짜 `vue-tsc` |
+
+프리셋 넷 다 **그 프레임워크를 실제로 설치한 프로젝트에 생성해서, 그 프로젝트의
+타입 체커로** `strict` · `noUnusedLocals` · `noUnusedParameters` 를 켜고 재봤다 —
+플래그를 켠 경우와 끈 경우 각각. 전부 초록불이다. 이 기준이 중요한 이유는,
+`verify.commands` 가 사용자의 생성 코드에 요구하는 것과 **같은 기준**이기 때문이다.
+그걸 못 넘는 템플릿은 거기서 나오는 페이지마다 결함을 하나씩 심는다.
+
+**재지 않은 것:** 실제 프로젝트 설정으로 `eslint` 를 돌려보지 않았고(설정이 너무
+갈려서 쓸모 있는 주장을 할 수 없다), 런타임·렌더링도 확인하지 않았다. 집안 스타일이
+다르면 템플릿을 고쳐라 — `--dry-run` 부터.
+
+### `init` 이 프리셋을 골라준다
+
+`init` 은 `dependencies` 와 `devDependencies` 를 읽어 정한다: `next` →
+`next-app`, `@remix-run/react` 또는 `@react-router/dev` → `remix`,
+`vue`·`nuxt` → `vue`, `react` 만 있으면 → `react-mvvm`.
+
+패키지 이름은 **프레임워크를 낸 쪽이 정한 이름**이라 폴더 이름과 달리 낡지 않는다 —
+`package.json` 의 스크립트를 읽어도 되는 것과 같은 이유다.
+
+한 `package.json` 에 프레임워크가 둘 있으면 조용히 하나를 고르지 않고 **모호하다고
+알리고 TODO 로 남긴다.**
+
+`next-app` 의 root 는 짐작하지 않고 **읽는다.** `app/` 과 `src/app/` 둘 다 흔하고,
+짐작하면 `app/` 으로 라우팅하는 저장소에 `src/app/...` 을 만든다 — Next 가 아예
+쳐다보지 않는 디렉토리다.
+
+### 무엇이 실제로 돌아갈지 보기
+
+돌아가는 것은 프리셋 + 설정 파일 + 읽어낸 root 의 병합인데, 기본적으로는 그게
+보이지 않는다:
+
+```console
+$ npx @mj_yu/react-generate-page --print-config --preset next-app
+# no config file; "next-app" preset
+# root read from the repository: app/ is at the repository root
+{
+  "root": ".",
+  ...
+}
+```
+
+설정은 stdout 으로, 설명은 stderr 로 나가므로 `jq` 에 그대로 물릴 수 있다.
+
+### 에디터 자동완성
+
+`node_modules/@mj_yu/react-generate-page/schema/generate-page.config.schema.json`
+에 JSON Schema 가 같이 배포된다. JSON 설정에서 가리키면 된다:
+
+```json
+{
+  "$schema": "./node_modules/@mj_yu/react-generate-page/schema/generate-page.config.schema.json",
+  "root": "src"
+}
+```
 
 ## 기존 파일은 안전하다
 

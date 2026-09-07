@@ -131,3 +131,78 @@ test("a draft with no root produces a config that fails validation loudly", asyn
   // that it is visible, not that it is silently defaulted to something plausible.
   assert.equal(mod.default.root, "TODO");
 });
+
+/* ------------------------------------------------- framework detection */
+
+test("the preset is read from the dependency list", async () => {
+  const { detectFramework } = await import("../src/init.js");
+  const cases: [Record<string, string>, string][] = [
+    [{ next: "15.0.0", react: "19.0.0" }, "next-app"],
+    [{ "@remix-run/react": "2.0.0", react: "19.0.0" }, "remix"],
+    [{ "@react-router/dev": "7.0.0", react: "19.0.0" }, "remix"],
+    [{ vue: "3.5.0" }, "vue"],
+    [{ nuxt: "3.0.0", vue: "3.5.0" }, "vue"],
+    [{ react: "19.0.0" }, "react-mvvm"],
+  ];
+  for (const [dependencies, expected] of cases) {
+    const dir = repo({ name: "x", dependencies }, { "src/A.tsx": "" });
+    const guess = detectFramework(observe(dir), dir);
+    assert.equal(guess?.preset, expected, `${JSON.stringify(dependencies)}`);
+    assert.match(guess!.evidence, /package\.json|,/);
+  }
+});
+
+test("a framework in devDependencies counts too", async () => {
+  const { detectFramework } = await import("../src/init.js");
+  const dir = repo({ name: "x", devDependencies: { vue: "3.5.0" } }, { "src/A.tsx": "" });
+  assert.equal(detectFramework(observe(dir), dir)?.preset, "vue");
+});
+
+test("react alone does not outrank the framework that depends on it", async () => {
+  // Next depends on react, so a naive match would pick react-mvvm for a Next app
+  // and generate MVVM folders into an app router project.
+  const { detectFramework } = await import("../src/init.js");
+  const dir = repo(
+    { name: "x", dependencies: { next: "15.0.0", react: "19.0.0", "react-dom": "19.0.0" } },
+    { "app/page.tsx": "" }
+  );
+  assert.equal(detectFramework(observe(dir), dir)?.preset, "next-app");
+});
+
+test("no framework package at all yields no guess", async () => {
+  const { detectFramework } = await import("../src/init.js");
+  const dir = repo({ name: "x" }, { "src/A.ts": "" });
+  assert.equal(detectFramework(observe(dir), dir), undefined);
+});
+
+test("two frameworks are flagged as ambiguous rather than resolved quietly", async () => {
+  const { detectFramework } = await import("../src/init.js");
+  const dir = repo({ name: "x", dependencies: { next: "15.0.0", vue: "3.5.0" } }, { "src/A.tsx": "" });
+  const guess = detectFramework(observe(dir), dir);
+  assert.deepEqual(guess?.ambiguous, ["next-app", "vue"]);
+  const draft = draftFrom(observe(dir), "src", guess, guess!.preset);
+  assert.ok(draft.notes.some((n) => /more than one framework/.test(n) && /TODO/.test(n)));
+});
+
+test("the next-app root is read, because app/ and src/app both exist in the wild", async () => {
+  const { detectFramework, presetRootFor } = await import("../src/init.js");
+  const atRoot = repo({ name: "x", dependencies: { next: "15.0.0" } }, { "app/page.tsx": "" });
+  assert.equal(detectFramework(observe(atRoot), atRoot)?.root, ".");
+
+  const underSrc = repo({ name: "x", dependencies: { next: "15.0.0" } }, { "src/app/page.tsx": "" });
+  assert.equal(detectFramework(observe(underSrc), underSrc)?.root, "src");
+
+  // Only next-app needs this; the others' roots do not interact with their dirs.
+  assert.equal(presetRootFor("vue", underSrc), undefined);
+  assert.equal(presetRootFor("react-mvvm", atRoot), undefined);
+});
+
+test("a detected preset is named in the draft, with its evidence", async () => {
+  const { detectFramework } = await import("../src/init.js");
+  const dir = repo({ name: "x", dependencies: { vue: "3.5.0" } }, { "src/A.vue": "" });
+  const observation = observe(dir);
+  const guess = detectFramework(observation, dir);
+  const rendered = renderDraft(draftFrom(observation, "src", guess, "vue"), "vue");
+  assert.match(rendered, /preset: "vue"/);
+  assert.match(rendered, /vue@3\.5\.0/);
+});

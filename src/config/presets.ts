@@ -262,14 +262,15 @@ const remix: Config = {
           template: `{{#if loader}}import { useLoaderData } from "react-router";
 
 export async function loader() {
-  return { };
+  return { {{name}}: null };
 }
 
 {{/if}}export default function {{Name}}() {
 {{#if loader}}  const data = useLoaderData<typeof loader>();
 
-{{/if}}  return <main />;
-}
+  return <pre>{JSON.stringify(data, null, 2)}</pre>;
+{{/if}}{{#unless loader}}  return <main />;
+{{/unless}}}
 `,
         },
       ],
@@ -293,22 +294,26 @@ const vue: Config = {
       files: [
         {
           name: "{{Name}}.vue",
-          template: `<script setup lang="ts">
-{{#if composable}}import { use{{Name}} } from "./use{{Name}}";
+          template: `{{#if composable}}<script setup lang="ts">
+import { use{{Name}} } from "./use{{Name}}";
 
-const { } = use{{Name}}();
-{{/if}}</script>
+const { loading } = use{{Name}}();
+</script>
 
-<template>
-  <main />
+{{/if}}<template>
+  <main{{#if composable}} :aria-busy="loading"{{/if}} />
 </template>
 `,
         },
         {
           name: "use{{Name}}.ts",
           when: "composable",
-          template: `export function use{{Name}}() {
-  return { };
+          template: `import { ref } from "vue";
+
+export function use{{Name}}() {
+  const loading = ref(false);
+
+  return { loading };
 }
 `,
         },

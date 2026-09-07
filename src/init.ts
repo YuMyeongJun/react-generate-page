@@ -48,7 +48,44 @@ export interface Observation {
   scripts: Record<string, string>;
   /** Recurring `*<Suffix>.tsx` naming, measured rather than assumed. */
   suffixes: { suffix: string; count: number; dirs: string[] }[];
+  /** dependencies and devDependencies merged, for framework detection. */
+  dependencies: Record<string, string>;
 }
+
+/** Which preset fits this repository, and what in the repo says so. */
+export interface FrameworkGuess {
+  preset: string;
+  /** What was read. Shown to the human so the choice is checkable. */
+  evidence: string;
+  /** Root that puts the preset's target dirs in the right place, if readable. */
+  root?: string;
+  rootEvidence?: string;
+  /** Set when two frameworks are present and neither is obviously the one. */
+  ambiguous?: string[];
+}
+
+/**
+ * Framework package names, most specific first.
+ *
+ * ⛔ Unlike folder names, these do not go stale: they are chosen by the
+ * framework's publisher, not by whoever laid out this repository. That is the
+ * same exception that lets us read package.json scripts, and it is why this
+ * list is allowed to be a list at all.
+ *
+ * Order is significant. A Next app also depends on `react`, so `react` sits
+ * last as the fallback rather than competing with the framework above it.
+ */
+const FRAMEWORK_PACKAGES: { pkg: string; preset: string }[] = [
+  { pkg: "next", preset: "next-app" },
+  { pkg: "@remix-run/react", preset: "remix" },
+  { pkg: "@react-router/dev", preset: "remix" },
+  { pkg: "nuxt", preset: "vue" },
+  { pkg: "vue", preset: "vue" },
+  { pkg: "react", preset: "react-mvvm" },
+];
+
+/** The fallback: present in every React project, so it proves nothing specific. */
+const FALLBACK_PACKAGE = "react";
 
 function hasCode(repo: string, dir: string, budget = 400): boolean {
   const stack = [dir];
@@ -188,7 +225,86 @@ export function observe(repo: string): Observation {
       : "npm",
     scripts,
     suffixes: measureSuffixes(files),
+    dependencies: {
+      ...((pkg.devDependencies ?? {}) as Record<string, string>),
+      ...((pkg.dependencies ?? {}) as Record<string, string>),
+    },
   };
+}
+
+/**
+ * Where the app router actually lives.
+ *
+ * The next-app preset writes into `app/{{path}}`, so `root` has to be the
+ * directory *containing* `app`. Both `src/app` and `app` are in the wild, and
+ * getting it wrong produces `app/app/...`. Read it rather than assume it.
+ */
+export function nextAppRoot(repo: string): { root: string; evidence: string } | undefined {
+  if (fs.existsSync(path.join(repo, "src", "app"))) {
+    return { root: "src", evidence: "src/app/ exists" };
+  }
+  if (fs.existsSync(path.join(repo, "app"))) {
+    // "." keeps the preset's own `app/{{path}}` correct.
+    return { root: ".", evidence: "app/ is at the repository root" };
+  }
+  return undefined;
+}
+
+/**
+ * Adjust a preset's `root` to what this repository actually looks like.
+ *
+ * Only next-app needs it: its target dir is `app/{{path}}`, so `root` must be
+ * the directory *containing* `app`. Shipping `root: "src"` and meeting a repo
+ * whose router is `app/` at the top produces `src/app/...` - a folder Next does
+ * not route, which is the wrong-folder failure this package exists to stop.
+ */
+export function presetRootFor(
+  presetName: string,
+  repo: string
+): { root: string; evidence: string } | undefined {
+  return presetName === "next-app" ? nextAppRoot(repo) : undefined;
+}
+
+export function detectFramework(
+  observation: Observation,
+  repo: string
+): FrameworkGuess | undefined {
+  const matched = FRAMEWORK_PACKAGES.filter(
+    (entry) => entry.pkg in observation.dependencies
+  );
+  if (matched.length === 0) {
+    return undefined;
+  }
+
+  const specific = matched.filter((entry) => entry.pkg !== FALLBACK_PACKAGE);
+  const distinct = [...new Set(specific.map((entry) => entry.preset))];
+
+  // Two different frameworks in one package.json. Picking one silently would be
+  // the guess this whole command exists to avoid.
+  if (distinct.length > 1) {
+    return {
+      preset: distinct[0],
+      evidence: specific
+        .map((e) => `${e.pkg}@${observation.dependencies[e.pkg]}`)
+        .join(", "),
+      ambiguous: distinct,
+    };
+  }
+
+  const chosen = specific[0] ?? matched[matched.length - 1];
+  const guess: FrameworkGuess = {
+    preset: chosen.preset,
+    evidence: `${chosen.pkg}@${observation.dependencies[chosen.pkg]} in package.json`,
+  };
+
+  if (chosen.preset === "next-app") {
+    const resolved = nextAppRoot(repo);
+    if (resolved) {
+      guess.root = resolved.root;
+      guess.rootEvidence = resolved.evidence;
+    }
+  }
+  return guess;
 }
 
 /** Only an exact script name counts. A near-miss runs the wrong thing. */
@@ -214,9 +330,31 @@ export interface Draft {
   notes: string[];
 }
 
-export function draftFrom(observation: Observation, root: string | undefined): Draft {
+export function draftFrom(
+  observation: Observation,
+  root: string | undefined,
+  framework?: FrameworkGuess,
+  presetName = "react-mvvm"
+): Draft {
   const notes: string[] = [];
   const verifyCommands: string[] = [];
+
+  if (!framework) {
+    notes.push(
+      `preset: no framework package found in package.json, so "${presetName}" was ` +
+        "used as the fallback. TODO: confirm it matches your conventions."
+    );
+  } else if (framework.ambiguous) {
+    notes.push(
+      `preset: found ${framework.evidence} - that is more than one framework, so ` +
+        `"${presetName}" is a pick, not a reading. TODO: confirm it.`
+    );
+  } else {
+    notes.push(`preset: "${presetName}", from ${framework.evidence}.`);
+  }
+  if (framework?.rootEvidence) {
+    notes.push(`root: "${framework.root}", because ${framework.rootEvidence}.`);
+  }
 
   const typecheck = scriptCommand(observation, ["typecheck", "type-check", "tsc"]);
   if (typecheck) {
@@ -261,12 +399,13 @@ export function draftFrom(observation: Observation, root: string | undefined): D
       );
     }
     notes.push(
-      "TODO: if these differ from the react-mvvm preset, override `targets` below."
+      `TODO: if these differ from the "${presetName}" preset, override \`targets\` below.`
     );
   } else {
     notes.push(
       "No recurring file-name suffix found, so no target layout could be read " +
-        "from the repo. TODO: check the preset's targets match your conventions."
+        `from the repo. TODO: check that the "${presetName}" targets match your ` +
+        "conventions."
     );
   }
 

@@ -80,6 +80,8 @@ npx @mj_yu/react-generate-page init [options]
 | `--cwd <dir>` | Treat this directory as the project root |
 | `--out <file>` | (`init`) Write the draft here |
 | `--force` | Overwrite existing files instead of stopping |
+| `--print-config` | Print the effective config (preset merge included) and exit |
+| `--list-presets` | List the built-in presets and exit |
 | `--no-verify` | Skip `verify.commands` |
 | `--no-fix` | Do not run `verify.fixCommands` when a check fails |
 | `--keep-on-fail` | Keep the generated files when verification fails |
@@ -185,17 +187,71 @@ repository and so do not know what passing means in it. `init` fills it in.
 
 ### Presets
 
-| Name | What |
-|---|---|
-| `react-mvvm` | **Default.** Component / ViewModel / Page / Condition plus `models/interfaces`, `models/types`, `hooks/client`. Byte-for-byte what versions up to 0.1.37 produced. |
-| `next-app` | Next.js app router — `page.tsx`, optional `loading.tsx` / `error.tsx` |
-| `remix` | Remix / React Router file routes with an optional loader |
-| `vue` | Vue 3 SFC with an optional composable |
+`npx @mj_yu/react-generate-page --list-presets` prints these with their target
+directories and flags.
 
-`react-mvvm` is a copy of previously released behaviour and is pinned by tests
-against fixtures captured from 0.1.37. The other three are **drafts**: they were
-not measured against a real repository of that kind, so run `--dry-run` and
-adjust them before trusting them.
+| Name | What | Verified against |
+|---|---|---|
+| `react-mvvm` | **Default.** Component / ViewModel / Page / Condition plus `models/interfaces`, `models/types`, `hooks/client` | Fixtures captured from 0.1.37, compared byte for byte |
+| `next-app` | Next.js app router — `page.tsx`, optional `loading.tsx` / `error.tsx` | Next 15 + React 19, real `tsc` |
+| `remix` | Remix / React Router file routes with an optional loader | React Router 7 + React 19, real `tsc` |
+| `vue` | Vue 3 SFC with an optional composable | Vue 3, real `vue-tsc` |
+
+Every preset's output was generated into an actual project with that framework
+installed and checked with that project's own type checker under `strict`,
+`noUnusedLocals` and `noUnusedParameters` — in each flag state, on and off. All
+clean. That bar matters because it is the same bar `verify.commands` holds your
+generated code to; a template that cannot pass it ships a defect into every page
+made from it.
+
+What that does **not** cover: no `eslint` run with a real project config (those
+vary too much to claim anything useful), and no runtime or rendering check. If
+your house style differs, edit the templates — `--dry-run` first.
+
+### `init` picks the preset for you
+
+`init` reads `dependencies` and `devDependencies` to choose: `next` →
+`next-app`, `@remix-run/react` or `@react-router/dev` → `remix`, `vue`/`nuxt` →
+`vue`, and `react` alone → `react-mvvm`. Package names are chosen by the
+framework's publisher rather than by whoever laid out your repo, so unlike folder
+names they do not go stale — the same reason `package.json` scripts are safe to
+read.
+
+Two frameworks in one `package.json` is reported as ambiguous and marked `TODO`
+rather than resolved quietly.
+
+The `next-app` root is read rather than assumed, because both `app/` and
+`src/app/` are common and guessing produces `src/app/...` in a repo that routes
+`app/` — a directory Next ignores.
+
+### Seeing what will actually run
+
+What executes is a merge of a preset, your config file and a detected root, and
+none of that is visible by default:
+
+```console
+$ npx @mj_yu/react-generate-page --print-config --preset next-app
+# no config file; "next-app" preset
+# root read from the repository: app/ is at the repository root
+{
+  "root": ".",
+  ...
+}
+```
+
+The config goes to stdout and the commentary to stderr, so it pipes into `jq`.
+
+### Editor completion
+
+A JSON Schema ships at `node_modules/@mj_yu/react-generate-page/schema/generate-page.config.schema.json`.
+Point at it from a JSON config:
+
+```json
+{
+  "$schema": "./node_modules/@mj_yu/react-generate-page/schema/generate-page.config.schema.json",
+  "root": "src"
+}
+```
 
 ## Existing files are safe
 

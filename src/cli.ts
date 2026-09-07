@@ -16,7 +16,7 @@ import { applyPlan, revert, type ApplyResult } from "./apply.js";
 import { findConflicts, formatConflicts } from "./conflict.js";
 import { ConfigError, loadConfig, validateConfig } from "./config/load.js";
 import { DEFAULT_PRESET, PRESETS } from "./config/presets.js";
-import { draftFrom, observe } from "./init.js";
+import { detectFramework, draftFrom, observe, presetRootFor } from "./init.js";
 import { renderDraft } from "./init.js";
 import { buildPlan, PlanError } from "./plan.js";
 import { createPrompter, isInteractive, NonInteractiveError } from "./prompt.js";
@@ -47,6 +47,26 @@ function readVersion(): string {
   return "unknown";
 }
 
+/**
+ * A preset used without a config file has no idea where this repo puts things.
+ * Where that is readable, read it rather than shipping a default that lands in
+ * the wrong folder.
+ */
+function withDetectedRoot(
+  config: Config,
+  presetName: string,
+  cwd: string
+): { config: Config; rootEvidence?: string } {
+  const detected = presetRootFor(presetName, cwd);
+  if (!detected || detected.root === config.root) {
+    return { config };
+  }
+  return {
+    config: { ...config, root: detected.root },
+    rootEvidence: detected.evidence,
+  };
+}
+
 async function resolveConfig(args: ParsedArgs, cwd: string) {
   if (args.preset) {
     const preset = PRESETS[args.preset];
@@ -56,7 +76,13 @@ async function resolveConfig(args: ParsedArgs, cwd: string) {
       );
     }
     validateConfig(preset);
-    return { config: preset, presetName: args.preset, file: undefined };
+    const adjusted = withDetectedRoot(preset, args.preset, cwd);
+    return {
+      config: adjusted.config,
+      presetName: args.preset,
+      file: undefined,
+      rootEvidence: adjusted.rootEvidence,
+    };
   }
   if (args.config) {
     const file = path.resolve(cwd, args.config);
@@ -192,6 +218,7 @@ function printPlan(
 
 async function runInit(args: ParsedArgs, cwd: string): Promise<number> {
   const observation = observe(cwd);
+  const framework = detectFramework(observation, cwd);
 
   out("");
   out("Read this repository:");
@@ -201,9 +228,44 @@ async function runInit(args: ParsedArgs, cwd: string): Promise<number> {
   out(
     `  top-level folders containing code: ${observation.codeDirs.join(", ") || "(none found)"}`
   );
+  out(
+    framework
+      ? `  framework: ${framework.evidence} -> "${framework.preset}" preset`
+      : `  framework: nothing recognised in package.json, falling back to "${DEFAULT_PRESET}"`
+  );
+
+  let presetName = framework?.preset ?? DEFAULT_PRESET;
+
+  // Two frameworks in one package.json is not something to resolve quietly.
+  if (framework?.ambiguous) {
+    out("");
+    out(`  more than one framework is present: ${framework.ambiguous.join(", ")}`);
+    if (isInteractive()) {
+      const prompter = createPrompter();
+      try {
+        framework.ambiguous.forEach((name, i) => out(`  ${i + 1}) ${name}`));
+        const answer = (
+          await prompter.ask(`Which preset? 1-${framework.ambiguous.length} (blank keeps "${presetName}"): `)
+        ).trim();
+        const index = Number(answer) - 1;
+        if (Number.isInteger(index) && index >= 0 && index < framework.ambiguous.length) {
+          presetName = framework.ambiguous[index];
+        }
+      } finally {
+        prompter.close();
+      }
+    } else {
+      out(`  no terminal to ask, so "${presetName}" is a pick - it will be marked TODO.`);
+    }
+  }
 
   let root: string | undefined;
-  if (observation.workspaces) {
+  if (framework?.root) {
+    // Read against the chosen preset's target dirs, so it beats the generic
+    // "which top-level folder has code" heuristic below.
+    root = framework.root;
+    out(`  root: ${root}, because ${framework.rootEvidence}`);
+  } else if (observation.workspaces) {
     // Top-level folders in a monorepo are workspace containers, not source.
     // Choosing one here would point root at `apps/`, which is wrong.
     out("");
@@ -242,7 +304,7 @@ async function runInit(args: ParsedArgs, cwd: string): Promise<number> {
     }
   }
 
-  const draft = draftFrom(observation, root);
+  const draft = draftFrom(observation, root, framework, presetName);
   const target = path.resolve(cwd, args.out ?? "generate-page.config.mjs");
   if (fs.existsSync(target) && !args.force) {
     err("");
@@ -251,7 +313,7 @@ async function runInit(args: ParsedArgs, cwd: string): Promise<number> {
     return 1;
   }
 
-  const contents = renderDraft(draft, DEFAULT_PRESET);
+  const contents = renderDraft(draft, presetName);
   if (args.dryRun) {
     out("");
     out(`--dry-run: would write ${path.relative(cwd, target)}:`);
@@ -269,8 +331,50 @@ async function runInit(args: ParsedArgs, cwd: string): Promise<number> {
   return 0;
 }
 
+/**
+ * Print the config the generator would actually use.
+ *
+ * Without this, "why did it write there" is guesswork: what runs is a merge of
+ * a preset, a config file and a detected root, and none of those are visible.
+ */
+async function runPrintConfig(args: ParsedArgs, cwd: string): Promise<number> {
+  const resolved = (await resolveConfig(args, cwd)) as LoadedConfigLike & {
+    rootEvidence?: string;
+  };
+  const loaded =
+    resolved.file === undefined && resolved.rootEvidence === undefined
+      ? (() => {
+          const adjusted = withDetectedRoot(resolved.config, resolved.presetName, cwd);
+          return { ...resolved, ...adjusted };
+        })()
+      : resolved;
+
+  err(
+    loaded.file
+      ? `# config file: ${path.relative(cwd, loaded.file) || loaded.file}`
+      : `# no config file; "${loaded.presetName}" preset`
+  );
+  if (loaded.rootEvidence) {
+    err(`# root read from the repository: ${loaded.rootEvidence}`);
+  }
+  // The config goes to stdout and the commentary to stderr, so this pipes into
+  // jq or a file without hand-editing.
+  out(JSON.stringify(loaded.config, null, 2));
+  return 0;
+}
+
 async function runGenerate(args: ParsedArgs, cwd: string): Promise<number> {
-  const loaded = (await resolveConfig(args, cwd)) as LoadedConfigLike;
+  const resolved = (await resolveConfig(args, cwd)) as LoadedConfigLike & {
+    rootEvidence?: string;
+  };
+  // No config file means the preset's own root is a default, not a reading.
+  const loaded =
+    resolved.file === undefined && resolved.rootEvidence === undefined
+      ? (() => {
+          const adjusted = withDetectedRoot(resolved.config, resolved.presetName, cwd);
+          return { ...resolved, ...adjusted };
+        })()
+      : resolved;
   const { config } = loaded;
 
   const answers = await collectAnswers(args, config);
@@ -282,6 +386,9 @@ async function runGenerate(args: ParsedArgs, cwd: string): Promise<number> {
       ? `Config: ${path.relative(cwd, loaded.file) || loaded.file}`
       : `Config: none found, using the "${loaded.presetName}" preset`
   );
+  if (loaded.rootEvidence) {
+    out(`Root:   ${config.root}, because ${loaded.rootEvidence}`);
+  }
   out("");
 
   if (args.dryRun) {
@@ -381,6 +488,25 @@ export async function main(argv: string[]): Promise<number> {
     out(readVersion());
     return 0;
   }
+  if (args.command === "list-presets") {
+    out("");
+    out("Built-in presets:");
+    for (const [name, preset] of Object.entries(PRESETS)) {
+      const flags = (preset.flags ?? []).map((f) => `--${f.id}`).join(" ");
+      out("");
+      out(`  ${name}${name === DEFAULT_PRESET ? "   (default)" : ""}`);
+      out(`    root: ${preset.root}`);
+      out(
+        `    creates: ${preset.targets
+          .map((t) => `${t.id} -> ${preset.root}/${t.dir}`)
+          .join(", ")}`
+      );
+      out(`    flags: ${flags || "(none)"}`);
+    }
+    out("");
+    out("Use one with --preset <name>, or set `preset` in your config file.");
+    return 0;
+  }
 
   const cwd = path.resolve(args.cwd ?? process.cwd());
   if (!fs.existsSync(cwd)) {
@@ -389,6 +515,9 @@ export async function main(argv: string[]): Promise<number> {
   }
 
   try {
+    if (args.command === "print-config") {
+      return await runPrintConfig(args, cwd);
+    }
     return args.command === "init"
       ? await runInit(args, cwd)
       : await runGenerate(args, cwd);
