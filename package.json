@@ -1,7 +1,7 @@
 {
   "name": "@mj_yu/react-generate-page",
   "version": "0.1.37",
-  "description": "리액트 자료구조를 기반으로 페이지 자동 생성 제너레이터",
+  "description": "Generate React pages from your own folder conventions. Config-driven, checks what it generates, zero runtime dependencies.",
   "author": "MyeongJun Yu <y1207cc@gmail.com>",
   "license": "MIT",
   "type": "module",
@@ -9,11 +9,15 @@
   "bin": "./dist/generate-page.js",
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "README.ko.md"
   ],
   "scripts": {
-    "build": "tsc",
-    "generate:page": "NODE_OPTIONS=\"--loader ts-node/esm\" node generate-page.ts",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build:test": "tsc -p tsconfig.test.json && node --input-type=module -e \"import{cpSync}from'node:fs';cpSync('tests/fixtures','dist-test/tests/fixtures',{recursive:true})\"",
+    "test": "yarn build:test && node --test dist-test/tests/*.test.js",
+    "generate:page": "node --experimental-strip-types generate-page.ts",
     "prepublishOnly": "npm run build"
   },
   "repository": "git+https://github.com/YuMyeongJun/react-generate-page.git",
@@ -30,5 +34,23 @@
     "ts-node": "^10.9.2",
     "typescript": "^5.0.0"
   },
-  "packageManager": "yarn@4.8.1"
+  "packageManager": "yarn@4.8.1",
+  "keywords": [
+    "react",
+    "generator",
+    "scaffold",
+    "codegen",
+    "boilerplate",
+    "cli",
+    "template",
+    "page",
+    "vue",
+    "next",
+    "remix",
+    "plop",
+    "hygen"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
 }
