@@ -68,6 +68,7 @@ generator does not.
 ```
 npx @mj_yu/react-generate-page [<path> <Name>] [options]
 npx @mj_yu/react-generate-page init [options]
+npx @mj_yu/react-generate-page check <path>... [options]
 ```
 
 | Option | What |
@@ -80,6 +81,8 @@ npx @mj_yu/react-generate-page init [options]
 | `--cwd <dir>` | Treat this directory as the project root |
 | `--out <file>` | (`init`) Write the draft here |
 | `--force` | Overwrite existing files instead of stopping |
+| `--base <ref>` | (`check`) check the files changed since this git ref |
+| `--fix` | Run `verify.fixCommands` and re-check. Required for `check` |
 | `--print-config` | Print the effective config (preset merge included) and exit |
 | `--list-presets` | List the built-in presets and exit |
 | `--no-verify` | Skip `verify.commands` |
@@ -90,6 +93,48 @@ npx @mj_yu/react-generate-page init [options]
 Passing `<path> <Name>` skips the prompts, so it works in scripts and CI. Add
 `--yes` to accept the defaults for the remaining questions — without it, a
 non-interactive run stops and tells you what is unanswered rather than guessing.
+
+## Checking code you did not generate
+
+The gate could only ever run on files it had just written, so there was no way
+to point it at code you migrated or wrote by hand. `check` fixes that:
+
+```bash
+npx @mj_yu/react-generate-page check src/pages/admin
+npx @mj_yu/react-generate-page check --base main      # what changed since main
+```
+
+It generates nothing and runs the same `verify.commands`. This is the useful
+half when moving a project onto React: the *structure* is generated, but the
+logic is carried over, and it is the carried-over part that breaks the house
+rules.
+
+`check` will not edit your files unless you pass `--fix`. Repairing generated
+code is fine — it was ours a moment ago — but these files are yours, and editing
+them because a check went red is a change nobody asked for. The failure message
+differs for the same reason: for generated files it tells you to fix the
+template, which would be the wrong advice here.
+
+## Already using universe-harness?
+
+If your repo has a `fe-harness.config.json`, `init` reads it: what "passing"
+means is already written down there, and writing it twice invites the two copies
+to disagree. Its command strings are translated under one rule — **keep the
+flags that change the judgement, drop the ones that only change the output**:
+
+```
+commands.lintJson: npx eslint <TARGET> --report-unused-disable-directives --format json -o <OUT>
+              ↓
+verify.commands:   npx eslint {{files}} --report-unused-disable-directives
+```
+
+The draft also says what this generator *cannot* cover. The harness's law
+presets read the syntax tree; this only runs commands, so those checks stay with
+the harness. `init` writes that down rather than leaving you to discover it.
+
+Where `bigbang` and this package overlap is written up, with measurements, in
+[docs/overlap-with-universe-harness.md](./docs/overlap-with-universe-harness.md).
+That document is a proposal, not a decision.
 
 ## Configuration
 

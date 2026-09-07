@@ -206,3 +206,135 @@ test("a detected preset is named in the draft, with its evidence", async () => {
   assert.match(rendered, /preset: "vue"/);
   assert.match(rendered, /vue@3\.5\.0/);
 });
+
+/* ------------------------------------------- reading a harness config */
+
+test("no fe-harness.config.json means nothing is said about the harness", async () => {
+  const { readHarnessConfig } = await import("../src/init.js");
+  const dir = repo({ name: "x" });
+  assert.equal(readHarnessConfig(dir), undefined);
+  assert.equal(observe(dir).harness, undefined);
+});
+
+test("a malformed harness config is ignored, not fatal", async () => {
+  const { readHarnessConfig } = await import("../src/init.js");
+  const dir = repo({ name: "x" }, { "fe-harness.config.json": "{ not json" });
+  assert.equal(readHarnessConfig(dir), undefined);
+  // init must still work on the rest of the repo.
+  assert.doesNotThrow(() => observe(dir));
+});
+
+test("lintJson is translated to a scoped command, output flags dropped", async () => {
+  const { readHarnessConfig } = await import("../src/init.js");
+  const dir = repo(
+    { name: "x" },
+    {
+      "fe-harness.config.json": JSON.stringify({
+        commands: {
+          lintJson:
+            "npx eslint <TARGET> --report-unused-disable-directives --format json -o <OUT>",
+        },
+      }),
+    }
+  );
+  const harness = readHarnessConfig(dir);
+  // <TARGET> becomes our placeholder; the judgement flag survives; the reporter
+  // and output file go, because a gate needs an exit code not a report.
+  assert.equal(
+    harness?.lintCommand,
+    "npx eslint {{files}} --report-unused-disable-directives"
+  );
+});
+
+test("--format=json and --output-file are dropped too", async () => {
+  const { readHarnessConfig } = await import("../src/init.js");
+  const dir = repo(
+    { name: "x" },
+    {
+      "fe-harness.config.json": JSON.stringify({
+        commands: { lintJson: "eslint <TARGET> --format=json --output-file=<OUT> --max-warnings 0" },
+      }),
+    }
+  );
+  assert.equal(readHarnessConfig(dir)?.lintCommand, "eslint {{files}} --max-warnings 0");
+});
+
+test("a lint command with no <TARGET> is left untranslated rather than guessed", async () => {
+  const { readHarnessConfig } = await import("../src/init.js");
+  const dir = repo(
+    { name: "x" },
+    { "fe-harness.config.json": JSON.stringify({ commands: { lintJson: "eslint ." } }) }
+  );
+  assert.equal(readHarnessConfig(dir)?.lintCommand, undefined);
+});
+
+test("the typecheck command is derived from the declared tsconfig, appDir included", async () => {
+  const { readHarnessConfig } = await import("../src/init.js");
+  const plain = repo(
+    { name: "x" },
+    { "fe-harness.config.json": JSON.stringify({ project: { appDir: ".", appTsconfig: "tsconfig.json" } }) }
+  );
+  assert.equal(readHarnessConfig(plain)?.typecheckCommand, "tsc --noEmit -p tsconfig.json");
+
+  const nested = repo(
+    { name: "x" },
+    {
+      "fe-harness.config.json": JSON.stringify({
+        project: { appDir: "apps/web", appTsconfig: "tsconfig.app.json" },
+      }),
+    }
+  );
+  assert.equal(
+    readHarnessConfig(nested)?.typecheckCommand,
+    "tsc --noEmit -p apps/web/tsconfig.app.json"
+  );
+});
+
+test("law presets are reported as things this generator cannot run", async () => {
+  const dir = repo(
+    { name: "x", dependencies: { react: "19.0.0" } },
+    {
+      "src/A.tsx": "",
+      "fe-harness.config.json": JSON.stringify({
+        contract: { presets: ["toss", "a11y"] },
+        commands: { lintJson: "eslint <TARGET> --format json -o <OUT>" },
+      }),
+    }
+  );
+  const observation = observe(dir);
+  assert.deepEqual(observation.harness?.lawPresets, ["toss", "a11y"]);
+  const draft = draftFrom(observation, "src");
+  assert.ok(
+    draft.notes.some((n) => /cannot run those/.test(n) && /toss, a11y/.test(n)),
+    "the draft must say the law presets are not covered here"
+  );
+});
+
+test("the harness's tsconfig wins over a duplicate typecheck script", async () => {
+  const dir = repo(
+    { name: "x", scripts: { typecheck: "tsc --noEmit" } },
+    {
+      "src/A.tsx": "",
+      "fe-harness.config.json": JSON.stringify({
+        project: { appDir: ".", appTsconfig: "tsconfig.json" },
+      }),
+    }
+  );
+  const draft = draftFrom(observe(dir), "src");
+  // Adding both would typecheck twice on every generate.
+  assert.deepEqual(draft.verifyCommands, ["tsc --noEmit -p tsconfig.json"]);
+  assert.ok(draft.notes.some((n) => /script was skipped/.test(n)));
+});
+
+test("a testFile command is noted but deliberately not adopted", async () => {
+  const dir = repo(
+    { name: "x" },
+    {
+      "src/A.tsx": "",
+      "fe-harness.config.json": JSON.stringify({ commands: { testFile: "vitest run <PATH>" } }),
+    }
+  );
+  const draft = draftFrom(observe(dir), "src");
+  assert.ok(!draft.verifyCommands.some((c) => /vitest/.test(c)));
+  assert.ok(draft.notes.some((n) => /testFile exists but was not adopted/.test(n)));
+});

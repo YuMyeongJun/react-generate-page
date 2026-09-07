@@ -65,6 +65,7 @@ npx @mj_yu/react-generate-page
 ```
 npx @mj_yu/react-generate-page [<경로> <페이지명>] [옵션]
 npx @mj_yu/react-generate-page init [옵션]
+npx @mj_yu/react-generate-page check <경로>... [옵션]
 ```
 
 | 옵션 | 무엇 |
@@ -77,6 +78,8 @@ npx @mj_yu/react-generate-page init [옵션]
 | `--cwd <디렉토리>` | 이 디렉토리를 프로젝트 루트로 본다 |
 | `--out <파일>` | (`init`) 초안을 여기에 쓴다 |
 | `--force` | 멈추지 않고 기존 파일을 덮어쓴다 |
+| `--base <ref>` | (`check`) 이 git ref 이후 바뀐 파일을 잰다 |
+| `--fix` | `verify.fixCommands` 를 돌리고 다시 잰다. `check` 에서는 필수 |
 | `--print-config` | 프리셋 병합까지 반영된 최종 설정을 출력하고 끝낸다 |
 | `--list-presets` | 내장 프리셋을 나열하고 끝낸다 |
 | `--no-verify` | `verify.commands` 를 건너뛴다 |
@@ -87,6 +90,46 @@ npx @mj_yu/react-generate-page init [옵션]
 `<경로> <페이지명>` 을 주면 질문을 건너뛴다 — 그래서 스크립트와 CI 에서 쓸 수 있다.
 남은 질문까지 기본값으로 넘기려면 `--yes` 를 붙인다. 없으면, 터미널이 아닌 곳에서
 실행됐을 때 **짐작하지 않고 무엇이 안 답해졌는지 말하며 멈춘다.**
+
+## 생성하지 않은 코드를 재기
+
+게이트는 **방금 쓴 파일만** 잴 수 있었다. 그래서 옮겨온 코드나 손으로 쓴 코드에
+겨눌 방법이 없었다. `check` 가 그 자리다:
+
+```bash
+npx @mj_yu/react-generate-page check src/pages/admin
+npx @mj_yu/react-generate-page check --base main      # main 이후 바뀐 것
+```
+
+아무것도 생성하지 않고 같은 `verify.commands` 를 돌린다. 프로젝트를 React 로 옮길 때
+쓸모 있는 쪽이 이것이다 — **구조는 생성되지만 로직은 옮겨오고, 깨지는 쪽은 옮겨온
+쪽이다.**
+
+`check` 는 `--fix` 를 주지 않으면 **파일을 고치지 않는다.** 생성한 코드를 고치는 건
+괜찮다(방금까지 우리 것이었다). 하지만 이 파일들은 사용자 것이고, 검사가 빨간불이라고
+남의 코드를 편집하는 것은 **아무도 시키지 않은 변경**이다. 실패 메시지도 같은 이유로
+다르다 — 생성물이면 「템플릿을 고쳐라」가 맞지만, 여기서는 틀린 안내다.
+
+## 이미 universe-harness 를 쓰고 있다면
+
+저장소에 `fe-harness.config.json` 이 있으면 `init` 이 그것을 읽는다. 「통과가
+무엇이냐」가 이미 거기 적혀 있고, 두 번 적으면 두 사본이 어긋나기 시작한다.
+명령 문자열은 규칙 하나로 번역한다 — **판정을 바꾸는 플래그는 남기고, 출력만 바꾸는
+플래그는 버린다:**
+
+```
+commands.lintJson: npx eslint <TARGET> --report-unused-disable-directives --format json -o <OUT>
+              ↓
+verify.commands:   npx eslint {{files}} --report-unused-disable-directives
+```
+
+초안은 **이 제너레이터가 못 덮는 것**도 적는다. harness 의 법칙 프리셋은 구문 트리를
+읽지만 이쪽은 명령만 돌리므로, 그 검사는 harness 쪽에 남는다. `init` 이 그걸 적어둔다 —
+사용자가 나중에 스스로 발견하게 두지 않는다.
+
+`bigbang` 과 이 패키지가 어디서 겹치는지는
+[docs/overlap-with-universe-harness.md](./docs/overlap-with-universe-harness.md)
+에 실측으로 정리해 뒀다. **그건 결정이 아니라 제안서다.**
 
 ## 설정
 

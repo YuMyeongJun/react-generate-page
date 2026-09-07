@@ -7,6 +7,7 @@
  * Nothing touches the disk until the entire plan exists and is known to be
  * conflict-free, which is what makes --dry-run exact rather than an estimate.
  */
+import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
@@ -21,7 +22,7 @@ import { renderDraft } from "./init.js";
 import { buildPlan, PlanError } from "./plan.js";
 import { createPrompter, isInteractive, NonInteractiveError } from "./prompt.js";
 import { render, TemplateError } from "./template.js";
-import { formatVerifyFailure, verifyPlan } from "./verify.js";
+import { formatVerifyFailure, verifyPlan, verifyTargets } from "./verify.js";
 import type { Answers, Config, LoadedConfigLike } from "./cli-types.js";
 
 const out = (message: string) => process.stdout.write(`${message}\n`);
@@ -363,6 +364,155 @@ async function runPrintConfig(args: ParsedArgs, cwd: string): Promise<number> {
   return 0;
 }
 
+/** Files changed since a git ref, plus anything untracked. */
+function changedSince(base: string, cwd: string): string[] {
+  const git = (...gitArgs: string[]) => {
+    const result = spawnSync("git", gitArgs, { cwd, encoding: "utf-8" });
+    if (result.status !== 0) {
+      throw new PlanError(
+        `git ${gitArgs.join(" ")} failed:\n${(result.stderr ?? "").trim()}`
+      );
+    }
+    return (result.stdout ?? "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+  };
+  // --diff-filter=d drops deletions: a file that no longer exists cannot be
+  // checked, and passing it to eslint is just an error about the wrong thing.
+  // Untracked files are included because a migration in progress is mostly
+  // new files that have not been committed yet.
+  return [
+    ...git("diff", "--name-only", "--diff-filter=d", base),
+    ...git("ls-files", "--others", "--exclude-standard"),
+  ];
+}
+
+/**
+ * `check` - hold existing files to the same bar as generated ones.
+ *
+ * The generator's gate could only ever run on files it had just written, so
+ * there was no way to point it at code you migrated or wrote by hand. That is
+ * the case that matters when moving a project onto React: the structure is
+ * generated, but the logic is carried over, and it is the carried-over part
+ * that breaks the house rules.
+ */
+async function runCheck(args: ParsedArgs, cwd: string): Promise<number> {
+  const resolved = (await resolveConfig(args, cwd)) as LoadedConfigLike;
+  const { config } = resolved;
+
+  const commands = config.verify?.commands ?? [];
+  if (commands.length === 0) {
+    err("");
+    err("Nothing to check with: verify.commands is empty.");
+    err("");
+    err("Run `npx @mj_yu/react-generate-page init` to read this repository's own");
+    err("checks into a config, or set verify.commands by hand.");
+    return 1;
+  }
+
+  let requested: string[];
+  if (args.base !== undefined) {
+    if (args.positional.length > 0) {
+      throw new ArgError("pass paths or --base, not both");
+    }
+    requested = changedSince(args.base, cwd);
+    if (requested.length === 0) {
+      out("");
+      out(`Nothing has changed since ${args.base}, so there is nothing to check.`);
+      return 0;
+    }
+  } else if (args.positional.length > 0) {
+    requested = args.positional;
+  } else {
+    err("");
+    err("Give `check` something to check:");
+    err("  npx @mj_yu/react-generate-page check src/pages/admin");
+    err("  npx @mj_yu/react-generate-page check --base main");
+    return 2;
+  }
+
+  // Paths reach a shell through verify.commands. They are quoted, but a path
+  // outside the project would still hand the checker somebody else's files.
+  const files: string[] = [];
+  const dirs: string[] = [];
+  const missing: string[] = [];
+  for (const entry of requested) {
+    const abs = path.resolve(cwd, entry);
+    const relative = path.relative(cwd, abs);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+      throw new PlanError(`${entry} is outside the project`);
+    }
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(abs);
+    } catch {
+      missing.push(entry);
+      continue;
+    }
+    (stat.isDirectory() ? dirs : files).push(relative.split(path.sep).join("/"));
+  }
+
+  if (missing.length > 0) {
+    err("");
+    err(`These paths do not exist:\n${missing.map((m) => `  ${m}`).join("\n")}`);
+    return 1;
+  }
+  if (files.length === 0 && dirs.length === 0) {
+    out("");
+    out("Nothing to check.");
+    return 0;
+  }
+
+  out("");
+  out(
+    resolved.file
+      ? `Config: ${path.relative(cwd, resolved.file) || resolved.file}`
+      : `Config: none found, using the "${resolved.presetName}" preset`
+  );
+  out(
+    `Checking ${files.length} file${files.length === 1 ? "" : "s"}` +
+      (dirs.length > 0 ? ` and ${dirs.length} director${dirs.length === 1 ? "y" : "ies"}` : "") +
+      (args.base ? ` changed since ${args.base}` : "")
+  );
+
+  if (args.dryRun) {
+    out("");
+    out("--dry-run: these commands would run, and nothing was checked.");
+    for (const command of commands) {
+      out(`  ${command}`);
+    }
+    out("");
+    for (const p of [...files, ...dirs]) {
+      out(`  ${p}`);
+    }
+    return 0;
+  }
+
+  out("");
+  // Repair is opt-in here. These are the user's files, not ours, and editing
+  // them because a check went red is a change nobody asked for.
+  const repair = args.fixExplicit && args.fix;
+  const spec = repair
+    ? config.verify
+    : { ...(config.verify ?? {}), selfFix: false };
+  const verification = verifyTargets(spec, { files, dirs }, cwd, out, "existing");
+
+  if (verification.ok) {
+    out("");
+    out(
+      verification.attemptedFix
+        ? "Green, after the repair round."
+        : "Green - these files pass this repository's own checks."
+    );
+    return 0;
+  }
+
+  err("");
+  err(formatVerifyFailure(verification, "existing"));
+  return 1;
+}
+
 async function runGenerate(args: ParsedArgs, cwd: string): Promise<number> {
   const resolved = (await resolveConfig(args, cwd)) as LoadedConfigLike & {
     rootEvidence?: string;
@@ -517,6 +667,9 @@ export async function main(argv: string[]): Promise<number> {
   try {
     if (args.command === "print-config") {
       return await runPrintConfig(args, cwd);
+    }
+    if (args.command === "check") {
+      return await runCheck(args, cwd);
     }
     return args.command === "init"
       ? await runInit(args, cwd)

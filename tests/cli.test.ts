@@ -564,3 +564,198 @@ test("every preset generates something that is not empty and lands under root", 
     }
   }
 });
+
+/* ------------------------------------------------------ check command */
+
+const CHECK_CONFIG = JSON.stringify({
+  verify: {
+    commands: ["! grep -l TODO_MIGRATE {{files}}"],
+    fixCommands: ["sed -i.bak 's/TODO_MIGRATE/done/' {{files}}"],
+  },
+});
+
+const gitProject = (files: Record<string, string> = {}): string => {
+  const dir = project(files);
+  spawnSync("git", ["init", "-q", "."], { cwd: dir });
+  spawnSync("git", ["config", "user.email", "t@t"], { cwd: dir });
+  spawnSync("git", ["config", "user.name", "t"], { cwd: dir });
+  spawnSync("git", ["add", "-A"], { cwd: dir });
+  spawnSync("git", ["commit", "-qm", "base"], { cwd: dir });
+  return dir;
+};
+
+test("check runs the gate against existing files and generates nothing", () => {
+  const dir = project({
+    "generate-page.config.json": CHECK_CONFIG,
+    "src/Clean.ts": "export const a = 1;\n",
+  });
+  const before = tree(dir);
+  const r = run(["check", "src/Clean.ts"], dir);
+  assert.equal(r.status, 0, r.all);
+  assert.match(r.stdout, /Green/);
+  assert.deepEqual(tree(dir), before, "check must not create anything");
+});
+
+test("check reports a failure without touching the files", () => {
+  // These are the user's files, not ours. Editing them because a check went red
+  // is a change nobody asked for.
+  const dir = project({
+    "generate-page.config.json": CHECK_CONFIG,
+    "src/Dirty.ts": "export const a = 1; // TODO_MIGRATE\n",
+  });
+  const r = run(["check", "src/Dirty.ts"], dir);
+  assert.notEqual(r.status, 0);
+  assert.match(r.all, /do not pass/);
+  assert.match(r.all, /Add --fix/);
+  // and crucially it must not say the template is at fault - nothing was generated
+  assert.ok(!/Fix the template/.test(r.all));
+  assert.equal(
+    fs.readFileSync(path.join(dir, "src/Dirty.ts"), "utf-8"),
+    "export const a = 1; // TODO_MIGRATE\n"
+  );
+});
+
+test("check --fix opts into repairing existing files", () => {
+  const dir = project({
+    "generate-page.config.json": CHECK_CONFIG,
+    "src/Dirty.ts": "export const a = 1; // TODO_MIGRATE\n",
+  });
+  const r = run(["check", "src/Dirty.ts", "--fix"], dir);
+  assert.equal(r.status, 0, r.all);
+  assert.match(fs.readFileSync(path.join(dir, "src/Dirty.ts"), "utf-8"), /done/);
+});
+
+test("check says 'these files', not 'what was generated'", () => {
+  const dir = project({
+    "generate-page.config.json": CHECK_CONFIG,
+    "src/Clean.ts": "export const a = 1;\n",
+  });
+  const r = run(["check", "src/Clean.ts"], dir);
+  assert.match(r.stdout, /Checking these files/);
+  assert.ok(!/what was generated/.test(r.stdout));
+});
+
+test("check accepts a directory", () => {
+  const dir = project({
+    "generate-page.config.json": CHECK_CONFIG,
+    "src/a/One.ts": "export const a = 1;\n",
+  });
+  const r = run(["check", "src"], dir);
+  assert.equal(r.status, 0, r.all);
+  assert.match(r.stdout, /1 director/);
+});
+
+test("check --base only looks at what changed since that ref", () => {
+  const dir = gitProject({
+    "generate-page.config.json": CHECK_CONFIG,
+    "src/Old.ts": "export const old = 1; // TODO_MIGRATE\n",
+  });
+  // Old.ts is committed and dirty, but untouched since HEAD, so it is not checked.
+  fs.writeFileSync(path.join(dir, "src/New.ts"), "export const fresh = 1;\n");
+  const r = run(["check", "--base", "HEAD"], dir);
+  assert.equal(r.status, 0, r.all);
+  assert.match(r.stdout, /changed since HEAD/);
+  assert.match(r.stdout, /src\/New\.ts/);
+  assert.ok(!/src\/Old\.ts/.test(r.stdout));
+});
+
+test("check --base picks up a modified tracked file", () => {
+  const dir = gitProject({
+    "generate-page.config.json": CHECK_CONFIG,
+    "src/Old.ts": "export const old = 1;\n",
+  });
+  fs.writeFileSync(path.join(dir, "src/Old.ts"), "export const old = 1; // TODO_MIGRATE\n");
+  const r = run(["check", "--base", "HEAD"], dir);
+  assert.notEqual(r.status, 0, "a modified file that fails must fail the check");
+  assert.match(r.all, /src\/Old\.ts/);
+});
+
+test("check --base reports cleanly when nothing changed", () => {
+  const dir = gitProject({ "generate-page.config.json": CHECK_CONFIG, "src/A.ts": "" });
+  const r = run(["check", "--base", "HEAD"], dir);
+  assert.equal(r.status, 0, r.all);
+  assert.match(r.stdout, /Nothing has changed since HEAD/);
+});
+
+test("check refuses paths outside the project", () => {
+  const dir = project({ "generate-page.config.json": CHECK_CONFIG });
+  const r = run(["check", "../../../etc/hosts"], dir);
+  assert.notEqual(r.status, 0);
+  assert.match(r.all, /outside the project/);
+});
+
+test("check names paths that do not exist instead of silently passing", () => {
+  const dir = project({ "generate-page.config.json": CHECK_CONFIG });
+  const r = run(["check", "src/Nope.ts"], dir);
+  assert.notEqual(r.status, 0);
+  assert.match(r.all, /do not exist/);
+  assert.match(r.all, /src\/Nope\.ts/);
+});
+
+test("check with no verify.commands explains rather than passing vacuously", () => {
+  const dir = project({ "src/A.ts": "export const a = 1;\n" });
+  const r = run(["check", "src/A.ts"], dir);
+  assert.notEqual(r.status, 0);
+  assert.match(r.all, /verify\.commands is empty/);
+  assert.match(r.all, /init/);
+});
+
+test("check with neither paths nor --base asks for one", () => {
+  const dir = project({ "generate-page.config.json": CHECK_CONFIG });
+  const r = run(["check"], dir);
+  assert.notEqual(r.status, 0);
+  assert.match(r.all, /--base/);
+});
+
+test("check refuses paths and --base together", () => {
+  const dir = gitProject({ "generate-page.config.json": CHECK_CONFIG, "src/A.ts": "" });
+  const r = run(["check", "src/A.ts", "--base", "HEAD"], dir);
+  assert.notEqual(r.status, 0);
+  assert.match(r.all, /not both/);
+});
+
+test("--base outside check is refused", () => {
+  const r = run(["a/b", "Thing", "--yes", "--base", "HEAD"], project());
+  assert.notEqual(r.status, 0);
+  assert.match(r.all, /only applies to/);
+});
+
+test("check --dry-run prints the commands and runs none of them", () => {
+  const dir = project({
+    "generate-page.config.json": CHECK_CONFIG,
+    "src/Dirty.ts": "export const a = 1; // TODO_MIGRATE\n",
+  });
+  const r = run(["check", "src/Dirty.ts", "--dry-run"], dir);
+  assert.equal(r.status, 0, "a dry run reports, so it cannot fail the gate");
+  assert.match(r.stdout, /grep -l TODO_MIGRATE/);
+  assert.match(
+    fs.readFileSync(path.join(dir, "src/Dirty.ts"), "utf-8"),
+    /TODO_MIGRATE/
+  );
+});
+
+test("check takes more than two paths, unlike generate", () => {
+  const dir = project({
+    "generate-page.config.json": CHECK_CONFIG,
+    "src/A.ts": "", "src/B.ts": "", "src/C.ts": "",
+  });
+  const r = run(["check", "src/A.ts", "src/B.ts", "src/C.ts"], dir);
+  assert.equal(r.status, 0, r.all);
+  assert.match(r.stdout, /Checking 3 files/);
+});
+
+test("init translates a harness config into verify commands", () => {
+  const dir = project({
+    "src/A.tsx": "export const a = 1;\n",
+    "fe-harness.config.json": JSON.stringify({
+      project: { appDir: ".", appTsconfig: "tsconfig.json" },
+      commands: { lintJson: "npx eslint <TARGET> --report-unused-disable-directives --format json -o <OUT>" },
+      contract: { presets: ["toss", "a11y"] },
+    }),
+  });
+  const r = run(["init", "--dry-run"], dir);
+  assert.equal(r.status, 0, r.all);
+  assert.match(r.stdout, /npx eslint \{\{files\}\} --report-unused-disable-directives/);
+  assert.match(r.stdout, /tsc --noEmit -p tsconfig\.json/);
+  assert.match(r.stdout, /cannot run those/);
+});

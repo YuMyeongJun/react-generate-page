@@ -50,6 +50,8 @@ export interface Observation {
   suffixes: { suffix: string; count: number; dirs: string[] }[];
   /** dependencies and devDependencies merged, for framework detection. */
   dependencies: Record<string, string>;
+  /** Read from fe-harness.config.json when this repo already uses the harness. */
+  harness?: HarnessConfig;
 }
 
 /** Which preset fits this repository, and what in the repo says so. */
@@ -190,6 +192,80 @@ export function measureSuffixes(files: string[]): Observation["suffixes"] {
     .slice(0, 8);
 }
 
+/**
+ * What a repository already using universe-harness tells us.
+ *
+ * `fe-harness.config.json` is the file that lands in a *consuming* repo, and it
+ * already answers the question this generator's `verify` needs answered: what
+ * does "passing" mean here. Reading it means the answer is written down once
+ * rather than twice.
+ *
+ * Its command strings use a different placeholder syntax (`<TARGET>`, `<OUT>`,
+ * `<PATH>`) and are shaped for a harness that needs machine-readable output. We
+ * only need an exit code, so the translation below has one rule: keep the flags
+ * that change the *judgement*, drop the ones that only change the *output*.
+ * Anything that cannot be translated under that rule is left as a note, not
+ * guessed at.
+ */
+export interface HarnessConfig {
+  /** Scoped lint command, translated. Absent when it could not be scoped. */
+  lintCommand?: string;
+  /** Project-wide typecheck, derived from the declared tsconfig. */
+  typecheckCommand?: string;
+  /** Law presets the harness enforces. This generator cannot run these. */
+  lawPresets: string[];
+  /** Whether a per-file test command exists, which we deliberately do not adopt. */
+  hasTestFile: boolean;
+}
+
+/** Flags that shape output rather than judgement, so they are dropped. */
+const OUTPUT_ONLY_FLAGS = [
+  /\s--format[= ]\S+/g,
+  /\s(?:-o|--output-file)[= ]\S+/g,
+];
+
+export function readHarnessConfig(repo: string): HarnessConfig | undefined {
+  const file = path.join(repo, "fe-harness.config.json");
+  if (!fs.existsSync(file)) {
+    return undefined;
+  }
+  let raw: Record<string, any>;
+  try {
+    raw = JSON.parse(fs.readFileSync(file, "utf-8"));
+  } catch {
+    // A harness config we cannot parse is not a reason to fail init; it is a
+    // reason to say nothing about it.
+    return undefined;
+  }
+
+  const commands = (raw.commands ?? {}) as Record<string, string>;
+  const project = (raw.project ?? {}) as Record<string, string>;
+  const result: HarnessConfig = {
+    lawPresets: Array.isArray(raw.contract?.presets) ? raw.contract.presets : [],
+    hasTestFile: typeof commands.testFile === "string",
+  };
+
+  const lintJson = commands.lintJson;
+  if (typeof lintJson === "string" && lintJson.includes("<TARGET>")) {
+    let translated = lintJson;
+    for (const pattern of OUTPUT_ONLY_FLAGS) {
+      translated = translated.replace(pattern, "");
+    }
+    result.lintCommand = translated.split("<TARGET>").join("{{files}}").trim();
+  }
+
+  const tsconfig = project.appTsconfig;
+  if (typeof tsconfig === "string" && tsconfig.trim() !== "") {
+    const appDir = project.appDir && project.appDir !== "." ? project.appDir : "";
+    const configPath = appDir ? `${appDir}/${tsconfig}` : tsconfig;
+    // -p takes a project, so this is unavoidably whole-project. Said out loud
+    // in the notes rather than presented as a scoped check.
+    result.typecheckCommand = `tsc --noEmit -p ${configPath}`;
+  }
+
+  return result;
+}
+
 export function observe(repo: string): Observation {
   const pkgPath = path.join(repo, "package.json");
   if (!fs.existsSync(pkgPath)) {
@@ -229,6 +305,7 @@ export function observe(repo: string): Observation {
       ...((pkg.devDependencies ?? {}) as Record<string, string>),
       ...((pkg.dependencies ?? {}) as Record<string, string>),
     },
+    harness: readHarnessConfig(repo),
   };
 }
 
@@ -356,8 +433,61 @@ export function draftFrom(
     notes.push(`root: "${framework.root}", because ${framework.rootEvidence}.`);
   }
 
+  const harness = observation.harness;
+  if (harness) {
+    notes.push(
+      "harness: this repo has fe-harness.config.json, so what \"passing\" means " +
+        "is already written down there. The commands below were translated from " +
+        "it, keeping the flags that change the judgement and dropping the ones " +
+        "that only change the output."
+    );
+    if (harness.lintCommand) {
+      verifyCommands.push(harness.lintCommand);
+      notes.push(
+        `  lint: translated from commands.lintJson, scoped to the generated ` +
+          "files via <TARGET>. The JSON reporter was dropped - a gate needs an " +
+          "exit code, not a report."
+      );
+    } else {
+      notes.push(
+        "  lint: commands.lintJson has no <TARGET>, so it could not be scoped. " +
+          "TODO: write a scoped lint command by hand."
+      );
+    }
+    if (harness.typecheckCommand) {
+      verifyCommands.push(harness.typecheckCommand);
+      notes.push(
+        `  typecheck: derived from project.appTsconfig. tsc -p takes a project, ` +
+          "so this is whole-project, not just the new page."
+      );
+    }
+    if (harness.hasTestFile) {
+      notes.push(
+        "  commands.testFile exists but was not adopted: a fresh page has no " +
+          "tests yet, so running it would either find nothing or fail. TODO: add " +
+          "it once your templates generate a test file."
+      );
+    }
+    if (harness.lawPresets.length > 0) {
+      notes.push(
+        `  the harness also enforces law presets (${harness.lawPresets.join(", ")}). ` +
+          "This generator cannot run those - they read the syntax tree, and it " +
+          "only runs commands. Keep using the harness for them; this config covers " +
+          "the compile-and-lint half."
+      );
+    }
+  }
+
   const typecheck = scriptCommand(observation, ["typecheck", "type-check", "tsc"]);
-  if (typecheck) {
+  if (harness?.typecheckCommand) {
+    // Already covered, and adding both would typecheck twice per run.
+    if (typecheck) {
+      notes.push(
+        `verify: the "${typecheck}" script was skipped - the harness config ` +
+          "already declares the tsconfig to check."
+      );
+    }
+  } else if (typecheck) {
     // Scoping a package.json script to specific files is not generally possible,
     // so this one runs project-wide and we say so rather than pretending.
     verifyCommands.push(typecheck);
@@ -370,14 +500,16 @@ export function draftFrom(
     );
   }
 
-  const lint = scriptCommand(observation, ["lint"]);
-  if (lint) {
-    notes.push(
-      `verify: found the "${lint}" script, but it lints everything. A scoped ` +
-        "check is better: TODO confirm `eslint {{files}}` works here."
-    );
-  } else {
-    notes.push("verify: no lint script found. TODO: add one if you use eslint.");
+  if (!harness?.lintCommand) {
+    const lint = scriptCommand(observation, ["lint"]);
+    if (lint) {
+      notes.push(
+        `verify: found the "${lint}" script, but it lints everything. A scoped ` +
+          "check is better: TODO confirm `eslint {{files}}` works here."
+      );
+    } else {
+      notes.push("verify: no lint script found. TODO: add one if you use eslint.");
+    }
   }
 
   if (observation.workspaces) {

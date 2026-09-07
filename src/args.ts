@@ -11,23 +11,32 @@
 export class ArgError extends Error {}
 
 export interface ParsedArgs {
-  command: "generate" | "init" | "help" | "version" | "print-config" | "list-presets";
+  command: "generate" | "init" | "check" | "help" | "version" | "print-config" | "list-presets";
   positional: string[];
   dryRun: boolean;
   yes: boolean;
   verify: boolean;
   fix: boolean;
+  /**
+   * Whether --fix / --no-fix was actually typed.
+   *
+   * `check` runs against files the user wrote, so repairing them has to be
+   * asked for. Generating is different: the files were ours a moment ago.
+   */
+  fixExplicit: boolean;
   keepOnFail: boolean;
   config?: string;
   cwd?: string;
   preset?: string;
   out?: string;
+  /** (check) git ref to diff against instead of listing paths by hand. */
+  base?: string;
   force: boolean;
   /** --someFlag / --no-someFlag, resolved against the config's flags later. */
   flagOverrides: Record<string, boolean>;
 }
 
-const VALUE_FLAGS = new Set(["--config", "--cwd", "--preset", "--out"]);
+const VALUE_FLAGS = new Set(["--config", "--cwd", "--preset", "--out", "--base"]);
 const BOOL_FLAGS = new Set([
   "--print-config",
   "--list-presets",
@@ -54,6 +63,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     yes: false,
     verify: true,
     fix: true,
+    fixExplicit: false,
     keepOnFail: false,
     force: false,
     flagOverrides: {},
@@ -77,6 +87,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       else if (arg === "--cwd") parsed.cwd = value;
       else if (arg === "--preset") parsed.preset = value;
       else if (arg === "--out") parsed.out = value;
+      else if (arg === "--base") parsed.base = value;
       continue;
     }
 
@@ -85,8 +96,13 @@ export function parseArgs(argv: string[]): ParsedArgs {
       else if (arg === "--yes" || arg === "-y") parsed.yes = true;
       else if (arg === "--verify") parsed.verify = true;
       else if (arg === "--no-verify") parsed.verify = false;
-      else if (arg === "--fix") parsed.fix = true;
-      else if (arg === "--no-fix") parsed.fix = false;
+      else if (arg === "--fix") {
+        parsed.fix = true;
+        parsed.fixExplicit = true;
+      } else if (arg === "--no-fix") {
+        parsed.fix = false;
+        parsed.fixExplicit = true;
+      }
       else if (arg === "--keep-on-fail") parsed.keepOnFail = true;
       else if (arg === "--force") parsed.force = true;
       else if (arg === "--print-config") parsed.command = "print-config";
@@ -105,15 +121,24 @@ export function parseArgs(argv: string[]): ParsedArgs {
     parsed.flagOverrides[name] = !negated;
   }
 
-  if (parsed.positional[0] === "init" && parsed.command === "generate") {
-    parsed.command = "init";
-    parsed.positional.shift();
+  if (parsed.command === "generate") {
+    if (parsed.positional[0] === "init") {
+      parsed.command = "init";
+      parsed.positional.shift();
+    } else if (parsed.positional[0] === "check") {
+      parsed.command = "check";
+      parsed.positional.shift();
+    }
   }
 
-  if (parsed.positional.length > 2) {
+  // `check` takes a list of paths; generating takes <path> <Name>.
+  if (parsed.command === "generate" && parsed.positional.length > 2) {
     throw new ArgError(
       `expected at most 2 positional arguments (<path> <Name>), got ${parsed.positional.length}: ${parsed.positional.join(" ")}`
     );
+  }
+  if (parsed.base !== undefined && parsed.command !== "check") {
+    throw new ArgError("--base only applies to `check`");
   }
 
   return parsed;
@@ -131,6 +156,10 @@ Usage
 Commands
   init                 read this repository and write a generate-page.config
                        draft. Values it cannot read are left as TODO.
+  check <path>...      run verify.commands against files that already exist,
+                       generating nothing. For code you migrated or wrote by
+                       hand, held to the same bar as generated code.
+                       Use --base <ref> to check what changed since a git ref.
 
 Options
   --dry-run            print what would be created and write nothing
@@ -141,10 +170,13 @@ Options
   --config <file>      use this config file
   --cwd <dir>          treat this directory as the project root
   --out <dir>          (init) write the draft here
+  --base <ref>         (check) check files changed since this git ref
   --force              overwrite existing files instead of stopping
   --print-config       print the effective config, preset merge included, and exit
   --list-presets       list the built-in presets and exit
   --no-verify          skip the checks configured in verify.commands
+  --fix                run verify.fixCommands and re-check. Required for
+                       \`check\`, which will not edit existing files otherwise
   --no-fix             do not run verify.fixCommands when a check fails
   --keep-on-fail       keep generated files when verification fails
   -h, --help           this text

@@ -36,6 +36,23 @@ deliberately so nobody's files churn.
   `react-mvvm`. Each was generated into a project with that framework really
   installed and checked with that project's own type checker under `strict`,
   `noUnusedLocals` and `noUnusedParameters`, in every flag state.
+- **`check <path>...`** — runs `verify.commands` against files that already
+  exist, generating nothing. The gate could only ever run on files it had just
+  written, so there was no way to point it at code you migrated or wrote by
+  hand — which is the half that matters when moving a project onto React: the
+  structure is generated, but the logic is carried over. `--base <ref>` checks
+  what changed since a git ref, untracked files included.
+  `check` does not edit your files unless `--fix` is passed: repairing
+  generated code is fine, but these files are yours. Its failure message omits
+  the "fix the template" advice, which would be wrong for code no template
+  produced.
+- **Reads `fe-harness.config.json`** — if the repo already uses
+  universe-harness, `init` translates its commands into `verify`, under one
+  rule: keep the flags that change the judgement, drop the ones that only
+  change the output. `commands.lintJson`'s `<TARGET>` becomes `{{files}}` and
+  its JSON reporter is dropped, because a gate needs an exit code, not a
+  report. The draft also records what this generator *cannot* cover — the
+  harness's law presets read the syntax tree, and this only runs commands.
 - **`--print-config`** — prints the effective config after the preset/file/root
   merge. Config to stdout, commentary to stderr, so it pipes into `jq`.
 - **`--list-presets`** — the built-in presets with their target dirs and flags.
@@ -85,6 +102,11 @@ deliberately so nobody's files churn.
 - **Runtime dependencies remain zero.**
 
 ### Notes
+
+- `docs/overlap-with-universe-harness.md` records, with measurements, where this
+  package and universe-harness's `bigbang` do the same job — five flags share a
+  name and meaning, and both are zero-dependency. It is a proposal for
+  discussion, not a decision.
 
 - `generateModelIndex()` existed but was never called, so its
   `// Add model exports here` string was never emitted by any release. The
