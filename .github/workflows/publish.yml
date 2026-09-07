@@ -23,8 +23,6 @@ jobs:
 
       - name: Install dependencies
         run: yarn install --immutable
-        env:
-          NODE_AUTH_TOKEN: unused-for-install
 
       - name: Typecheck
         run: yarn typecheck
@@ -36,6 +34,10 @@ jobs:
     name: Package Build & Publish
     needs: test
     runs-on: ubuntu-latest
+    # Job-level, so every yarn invocation sees it. Setting it per-step is what
+    # broke CI: .yarnrc.yml reads it on every call, not just during install.
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.PACKAGE_PUBLISH_KEY_NPM }}
     steps:
       - uses: actions/checkout@v4
 
@@ -50,15 +52,9 @@ jobs:
 
       - name: Install dependencies
         run: yarn install --immutable
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.PACKAGE_PUBLISH_KEY_NPM }}
 
       - name: Build
         run: yarn build
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.PACKAGE_PUBLISH_KEY_NPM }}
 
       - name: Publish to npm
         run: yarn npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.PACKAGE_PUBLISH_KEY_NPM }}

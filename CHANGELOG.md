@@ -101,6 +101,21 @@ deliberately so nobody's files churn.
   installs are unaffected.
 - **Runtime dependencies remain zero.**
 
+### Fixed in CI
+
+- **`.yarnrc.yml` demanded `NODE_AUTH_TOKEN` on every yarn invocation.** It
+  interpolated `${NODE_AUTH_TOKEN}` with no fallback, and yarn reads that file
+  on every call - not just during install. So `yarn test`, `yarn typecheck` and
+  `yarn build` all failed with "Environment variable not found" for anyone
+  without a publish token. The first CI run proved it: four jobs, all red in
+  12-17 seconds, none of them having reached a test. It now defaults to empty,
+  so a fresh clone can run the suite; publishing still supplies the real token.
+- The publish workflow sets the token once at job level instead of per step,
+  which is what made a per-step omission fatal in the first place.
+- `engines.node >= 18` is now measured rather than claimed: the full pipeline
+  was run against real Node 18.20.8, 20.19.0 and 22.14.0 binaries - 181 tests
+  pass on each, plus the build and bin checks.
+
 ### Notes
 
 - `docs/overlap-with-universe-harness.md` records, with measurements, where this

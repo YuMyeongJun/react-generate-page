@@ -25,12 +25,12 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
+      # No NODE_AUTH_TOKEN anywhere in this workflow: nothing here talks to a
+      # registry that needs one. .yarnrc.yml used to demand it on every yarn
+      # invocation, which failed every step after install; it now defaults to
+      # empty.
       - name: Install dependencies
         run: yarn install --immutable
-        env:
-          # .yarnrc.yml interpolates this for the @mj_yu scope. Installing needs
-          # no credentials, but the variable has to exist.
-          NODE_AUTH_TOKEN: unused-for-install
 
       - name: Typecheck
         run: yarn typecheck
@@ -50,8 +50,6 @@ jobs:
         run: corepack enable
       - name: Install dependencies
         run: yarn install --immutable
-        env:
-          NODE_AUTH_TOKEN: unused-for-install
       - name: Build
         run: yarn build
       - name: The published bin must exist at the path package.json points at
