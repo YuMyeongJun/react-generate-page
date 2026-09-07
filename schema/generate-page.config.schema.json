@@ -1,0 +1,143 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/YuMyeongJun/react-generate-page/main/schema/generate-page.config.schema.json",
+  "title": "@mj_yu/react-generate-page config",
+  "description": "Folders, file names, template bodies and questions for the page generator.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["targets"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Editor completion only. Ignored at runtime."
+    },
+    "preset": {
+      "type": "string",
+      "description": "Built-in preset to start from. Anything else here overrides it.",
+      "enum": ["react-mvvm", "next-app", "remix", "vue"],
+      "default": "react-mvvm"
+    },
+    "root": {
+      "type": "string",
+      "description": "Source root, relative to the project. Must stay inside it.",
+      "examples": ["src", "app", "."]
+    },
+    "vars": {
+      "type": "object",
+      "description": "Extra template tokens. Values are themselves templated, so \"@app/{{path}}\" works. May not shadow Name, name, kebab, path or root.",
+      "additionalProperties": { "type": "string" }
+    },
+    "flags": {
+      "type": "array",
+      "description": "Yes/no questions. The id is what templates and when: clauses reference.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_]+$",
+            "description": "Referenced as {{#if id}} and as the --id command-line flag."
+          },
+          "label": {
+            "type": "string",
+            "description": "Question text. {{path}} and {{Name}} are substituted before asking."
+          },
+          "default": {
+            "type": "boolean",
+            "default": false,
+            "description": "Answer used with --yes, or when the question is skipped."
+          }
+        }
+      }
+    },
+    "targets": {
+      "type": "array",
+      "description": "Directories to generate into. Providing this replaces the preset's targets entirely; arrays do not concatenate.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "dir", "files"],
+        "properties": {
+          "id": { "type": "string", "description": "Stable identifier, used in output." },
+          "dir": {
+            "type": "string",
+            "description": "Directory under root, templated. e.g. \"components/pages/{{path}}\"."
+          },
+          "when": {
+            "type": "string",
+            "description": "Only generate this target when the named flag is on."
+          },
+          "parentIndex": {
+            "type": "boolean",
+            "default": false,
+            "description": "Write or extend index.ts in each ancestor directory, re-exporting the child."
+          },
+          "parentIndexBase": {
+            "type": "string",
+            "description": "Where ancestor barrel-writing stops, relative to root. Defaults to dir with the {{path}} segment removed."
+          },
+          "files": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name"],
+              "oneOf": [
+                { "required": ["template"] },
+                { "required": ["templateFile"] }
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "File name, templated. e.g. \"{{Name}}Component.tsx\"."
+                },
+                "template": { "type": "string", "description": "Body, templated." },
+                "templateFile": {
+                  "type": "string",
+                  "description": "Body read from this file, relative to the config file's directory."
+                },
+                "when": {
+                  "type": "string",
+                  "description": "Only write this file when the named flag is on."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "verify": {
+      "type": "object",
+      "description": "Checks run against the freshly generated paths.",
+      "additionalProperties": false,
+      "properties": {
+        "commands": {
+          "type": "array",
+          "description": "Run from the project root with ./node_modules/.bin on PATH. {{files}} and {{dirs}} expand to the generated paths.",
+          "items": { "type": "string", "minLength": 1 },
+          "examples": [["tsc --noEmit {{files}}", "eslint {{files}}"]]
+        },
+        "fixCommands": {
+          "type": "array",
+          "description": "Commands that repair, run once before re-checking. There is no model here, so self-fix means your own repair tooling.",
+          "items": { "type": "string", "minLength": 1 },
+          "examples": [["eslint --fix {{files}}"]]
+        },
+        "selfFix": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run fixCommands and re-check when verification fails."
+        },
+        "revertOnFail": {
+          "type": "boolean",
+          "default": true,
+          "description": "Delete the generated files when verification still fails, leaving the tree as it was."
+        }
+      }
+    }
+  }
+}

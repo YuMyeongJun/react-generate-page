@@ -6,15 +6,42 @@ on:
       - 'v*.*.*'
 
 jobs:
-  build:
-    name: Package Build & Publish
+  # Publishing used to happen with no tests in front of it. It does not any more:
+  # a red suite blocks the release.
+  test:
+    name: Test before publishing
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      
-      - uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+        env:
+          NODE_AUTH_TOKEN: unused-for-install
+
+      - name: Typecheck
+        run: yarn typecheck
+
+      - name: Test
+        run: yarn test
+
+  publish:
+    name: Package Build & Publish
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
           registry-url: 'https://registry.npmjs.org'
           scope: '@mj_yu'
 
@@ -22,9 +49,7 @@ jobs:
         run: corepack enable
 
       - name: Install dependencies
-        run: |
-          yarn set version 4.8.1
-          yarn install
+        run: yarn install --immutable
         env:
           NODE_AUTH_TOKEN: ${{ secrets.PACKAGE_PUBLISH_KEY_NPM }}
 
@@ -36,4 +61,4 @@ jobs:
       - name: Publish to npm
         run: yarn npm publish --access public
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.PACKAGE_PUBLISH_KEY_NPM }} 
+          NODE_AUTH_TOKEN: ${{ secrets.PACKAGE_PUBLISH_KEY_NPM }}
